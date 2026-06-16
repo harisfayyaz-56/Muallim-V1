@@ -1,5 +1,12 @@
 from django.http import JsonResponse
 from django.db import connection
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import UserProfile
+from .serializers import UserProfileSerializer, TimezoneUpdateSerializer
+
 
 def health_check(request):
     try:
@@ -12,3 +19,45 @@ def health_check(request):
         "status": "ok",
         "database": db_status,
     })
+
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    """ViewSet for user profile management"""
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Users can only view/edit their own profile"""
+        return UserProfile.objects.filter(user=self.request.user)
+
+    def get_object(self):
+        """Get the authenticated user's profile"""
+        obj, created = UserProfile.objects.get_or_create(user=self.request.user)
+        return obj
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """Get current user's profile"""
+        profile = self.get_object()
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['patch'], permission_classes=[IsAuthenticated])
+    def timezone(self, request):
+        """Update user's timezone"""
+        profile = self.get_object()
+        serializer = TimezoneUpdateSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def timezones(self, request):
+        """Get all available timezones"""
+        from .models import UserProfile
+        timezones = [
+            {'value': tz[0], 'label': tz[1]} 
+            for tz in UserProfile.TIMEZONE_CHOICES
+        ]
+        return Response(timezones)
