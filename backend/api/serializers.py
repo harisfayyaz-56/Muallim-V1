@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import UserProfile
+from .utils.upload_validators import validate_avatar_file
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -34,3 +35,28 @@ class TimezoneUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['timezone']
+
+
+class AvatarUploadSerializer(serializers.ModelSerializer):
+    """Serializer for avatar upload with validation"""
+    profile_picture = serializers.ImageField(required=True)
+    
+    class Meta:
+        model = UserProfile
+        fields = ['profile_picture']
+    
+    def validate_profile_picture(self, value):
+        """Validate avatar file before saving"""
+        if value:
+            validate_avatar_file(value)
+        return value
+    
+    def to_representation(self, instance):
+        """Return avatar URL after upload"""
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if instance.profile_picture:
+            representation['profile_picture_url'] = request.build_absolute_uri(
+                instance.profile_picture.url
+            ) if request else instance.profile_picture.url
+        return representation

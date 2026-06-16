@@ -1,11 +1,12 @@
 from django.http import JsonResponse
 from django.db import connection
+from django.core.exceptions import ValidationError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import UserProfile
-from .serializers import UserProfileSerializer, TimezoneUpdateSerializer
+from .serializers import UserProfileSerializer, TimezoneUpdateSerializer, AvatarUploadSerializer
 
 
 def health_check(request):
@@ -61,3 +62,34 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             for tz in UserProfile.TIMEZONE_CHOICES
         ]
         return Response(timezones)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def avatar(self, request):
+        """Upload and update user's avatar"""
+        profile = self.get_object()
+        serializer = AvatarUploadSerializer(
+            profile, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    'success': True,
+                    'message': 'Avatar uploaded successfully',
+                    'profile_picture_url': profile.profile_picture.url if profile.profile_picture else None
+                },
+                status=status.HTTP_200_OK
+            )
+        
+        # Return validation errors with clear messages
+        return Response(
+            {
+                'success': False,
+                'errors': serializer.errors
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
