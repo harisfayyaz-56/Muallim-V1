@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny
 
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -183,3 +184,21 @@ class GoogleAuthView(APIView):
 
         # simple response - client should exchange for JWT via token endpoints
         return Response({'detail': 'Google authentication accepted', 'email': email}, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    """Logout by blacklisting the provided refresh token"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh = request.data.get('refresh')
+        if not refresh:
+            return Response({'detail': 'Refresh token required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            # Blacklist the refresh token
+            token = OutstandingToken.objects.get(token=refresh)
+            BlacklistedToken.objects.get_or_create(token=token)
+        except OutstandingToken.DoesNotExist:
+            # Token not found; still return success to avoid leaking info
+            pass
+        return Response({'detail': 'Logged out'}, status=status.HTTP_200_OK)
