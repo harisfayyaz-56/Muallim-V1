@@ -10,6 +10,19 @@ class UserProfile(models.Model):
         ('teacher', 'Teacher'),
         ('both', 'Both Student and Teacher'),
     )
+    
+    TIMEZONE_CHOICES = (
+        ('Asia/Dubai', 'Dubai (GST, UTC+4)'),
+        ('Asia/Abu_Dhabi', 'Abu Dhabi (GST, UTC+4)'),
+        ('Asia/Sharjah', 'Sharjah (GST, UTC+4)'),
+        ('Asia/Kolkata', 'India (IST, UTC+5:30)'),
+        ('Europe/London', 'London (GMT, UTC+0)'),
+        ('US/Eastern', 'Eastern (EST/EDT, UTC-5/-4)'),
+        ('US/Central', 'Central (CST/CDT, UTC-6/-5)'),
+        ('US/Mountain', 'Mountain (MST/MDT, UTC-7/-6)'),
+        ('US/Pacific', 'Pacific (PST/PDT, UTC-8/-7)'),
+        ('Europe/Paris', 'Central Europe (CET, UTC+1)'),
+    )
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='student')
@@ -17,6 +30,8 @@ class UserProfile(models.Model):
     bio = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     location = models.CharField(max_length=255, blank=True, null=True)
+    timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='Asia/Dubai')
+    currency = models.CharField(max_length=3, default='AED', editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
