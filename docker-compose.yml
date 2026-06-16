@@ -1,21 +1,56 @@
-version: '3.9'
-
 services:
+  db:
+    image: postgres:16
+    container_name: muallim-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: muallim
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - muallim-network
+
   backend:
     build: ./backend
+    container_name: muallim-backend
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:admin123@db:5432/muallim
     volumes:
       - ./backend:/app
-    command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    networks:
+      - muallim-network
 
   frontend:
     build: ./frontend
+    container_name: muallim-frontend
     ports:
-      - "3000:3000"
+      - "3000:5173"
     env_file:
       - .env
     depends_on:
       - backend
+    networks:
+      - muallim-network
+
+volumes:
+  postgres_data:
+
+networks:
+  muallim-network:
+    driver: bridge
