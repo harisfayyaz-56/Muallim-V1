@@ -13,13 +13,14 @@ from .models import (
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'user_type', 'phone', 'location', 'created_at')
-    list_filter = ('user_type', 'created_at')
+    list_display = ('user', 'user_type', 'phone', 'location', 'timezone', 'currency', 'created_at')
+    list_filter = ('user_type', 'timezone', 'created_at')
     search_fields = ('user__username', 'user__email', 'phone')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'currency')
     fieldsets = (
         ('User', {'fields': ('user',)}),
         ('Profile Info', {'fields': ('user_type', 'bio', 'phone', 'location', 'profile_picture')}),
+        ('Preferences', {'fields': ('timezone', 'currency')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
 
