@@ -32,6 +32,8 @@ class UserProfile(models.Model):
     location = models.CharField(max_length=255, blank=True, null=True)
     timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='Asia/Dubai')
     currency = models.CharField(max_length=3, default='AED', editable=False)
+    email_verified = models.BooleanField(default=False)
+    is_suspended = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

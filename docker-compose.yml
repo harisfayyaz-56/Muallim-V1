@@ -29,6 +29,7 @@ services:
       - DATABASE_URL=postgresql://postgres:admin123@db:5432/muallim
     volumes:
       - ./backend:/app
+      - ./backend/media:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -50,6 +51,7 @@ services:
 
 volumes:
   postgres_data:
+  media_data:
 
 networks:
   muallim-network:
