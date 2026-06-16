@@ -3,6 +3,8 @@ import { Link } from 'react-router';
 import { Camera, Save, User, Bell, Shield, GraduationCap, Globe, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { AvatarUploader } from '../components/AvatarUploader';
+import { AvatarDisplay } from '../components/AvatarDisplay';
 
 const TIMEZONES = [
   'Asia/Dubai',
@@ -91,38 +93,26 @@ export function ProfileSettings() {
                   </div>
 
                   <div className="p-6 space-y-6">
-                    {/* Avatar */}
-                    <div className="flex items-center gap-5">
-                      <div className="relative">
-                        <img src={avatarPreview} alt="Profile" className="w-20 h-20 rounded-2xl object-cover" />
-                        <label className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
-                          <Camera className="w-6 h-6 text-white" />
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={e => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const url = URL.createObjectURL(file);
-                                setAvatarPreview(url);
-                              }
+                    {/* Avatar Section */}
+                    <div className="pb-4 border-b border-[rgba(13,27,42,0.06)]">
+                      <h3 className="text-[#0D1B2A] text-sm font-semibold mb-4">Profile Photo</h3>
+                      <div className="flex items-start gap-6">
+                        <AvatarDisplay
+                          src={avatarPreview}
+                          name={`${form.firstName} ${form.lastName}`}
+                          size="lg"
+                        />
+                        <div className="flex-1">
+                          <AvatarUploader
+                            currentAvatarUrl={avatarPreview}
+                            onUploadSuccess={(url) => {
+                              setAvatarPreview(url);
+                            }}
+                            onUploadError={(error) => {
+                              console.error('Avatar upload error:', error);
                             }}
                           />
-                        </label>
-                      </div>
-                      <div>
-                        <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>Profile Photo</p>
-                        <p className="text-[#9CA3AF] text-xs mt-0.5">JPG or PNG. Max 5MB. Min 200×200px.</p>
-                        <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-[#C8962A] cursor-pointer hover:underline">
-                          <Camera className="w-3.5 h-3.5" /> Upload new photo
-                          <input type="file" accept="image/*" className="hidden" onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file && file.size <= 5 * 1024 * 1024) {
-                              setAvatarPreview(URL.createObjectURL(file));
-                            }
-                          }} />
-                        </label>
+                        </div>
                       </div>
                     </div>
 

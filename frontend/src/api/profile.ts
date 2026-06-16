@@ -110,3 +110,29 @@ export const updateProfile = async (
 
   return response.json();
 };
+
+/**
+ * Upload user's avatar
+ */
+export const uploadAvatar = async (
+  token: string,
+  file: File
+): Promise<{ success: boolean; profile_picture_url: string }> => {
+  const formData = new FormData();
+  formData.append('profile_picture', file);
+
+  const response = await fetch(`${API_BASE}/profile/avatar/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.errors?.profile_picture?.[0] || 'Failed to upload avatar');
+  }
+
+  return response.json();
+};
