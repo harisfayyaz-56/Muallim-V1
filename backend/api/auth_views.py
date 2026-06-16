@@ -45,6 +45,7 @@ from .serializers import UserProfileSerializer
 
 import google.auth.transport.requests
 import google.oauth2.id_token
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 class RegisterView(APIView):
@@ -181,9 +182,17 @@ class GoogleAuthView(APIView):
         })
         if created:
             UserProfile.objects.get_or_create(user=user)
+        # Issue JWT tokens for the user
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
 
-        # simple response - client should exchange for JWT via token endpoints
-        return Response({'detail': 'Google authentication accepted', 'email': email}, status=status.HTTP_200_OK)
+        return Response({
+            'detail': 'Google authentication accepted',
+            'email': email,
+            'access': access_token,
+            'refresh': refresh_token,
+        }, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):
