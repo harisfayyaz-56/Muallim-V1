@@ -1,9 +1,125 @@
+# Environment & Secrets
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+*.pot
+*.mo
+.webassets-cache
+instance/
+.scrapy
+docs/_build/
+target/
+.ipynb_checkpoints
+.pytype/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+venv/
+env/
+ENV/
+.venv
+
+# Django
 db.sqlite3
-*.log
-.DS_Store
+db.sqlite3-journal
+/media
+/staticfiles
+/static
+local_settings.py
+
+# Node/NPM/Yarn
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+.npm
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+*.sublime-workspace
+*.sublime-project
+.vs/
+.vscode-settings.json
+jsconfig.json.user
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+.tmp/
+
+# IDE specific
+.classpath
+.project
+.settings/
+*.iml
+.gradle/
+.idea/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+coverage/
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Production
+.cache/
+.venv/
+env/
+venv/
