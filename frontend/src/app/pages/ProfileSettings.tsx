@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Camera, Save, User, Bell, Shield, GraduationCap, Globe, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { AvatarUploader } from '../components/AvatarUploader';
 import { AvatarDisplay } from '../components/AvatarDisplay';
+import { getProfile } from '../../api/profile';
 
 const TIMEZONES = [
   'Asia/Dubai',
@@ -37,6 +38,32 @@ export function ProfileSettings() {
   });
   const [saved, setSaved] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=200&h=200&fit=crop&auto=format');
+
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    (async () => {
+      try {
+        const profile = await getProfile(token);
+        if (profile) {
+          setForm((f) => ({
+            ...f,
+            firstName: profile.first_name || f.firstName,
+            lastName: profile.last_name || f.lastName,
+            email: profile.email || f.email,
+            bio: profile.bio || f.bio,
+            location: profile.location || f.location,
+            timezone: profile.timezone || f.timezone,
+          }));
+          // profile_picture may be absolute URL depending on backend
+          const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
+          if (pic) setAvatarPreview(pic);
+        }
+      } catch (err) {
+        // ignore
+      }
+    })();
+  }, []);
 
   const handleSave = () => {
     setSaved(true);

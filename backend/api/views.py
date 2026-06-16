@@ -40,7 +40,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     def me(self, request):
         """Get current user's profile"""
         profile = self.get_object()
-        serializer = self.get_serializer(profile)
+        serializer = self.get_serializer(profile, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['patch'], permission_classes=[IsAuthenticated])
