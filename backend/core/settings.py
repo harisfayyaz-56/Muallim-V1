@@ -54,31 +54,27 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# Database configuration
+# Database configuration - PostgreSQL required
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-if DATABASE_URL:
-    # Use PostgreSQL from Supabase (production)
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=True,
-        )
-    }
-    # Add psycopg2 options for better connectivity
-    if DATABASES['default']:
-        DATABASES['default']['OPTIONS'] = {
-            'sslmode': 'require',
-            'connect_timeout': 10,
-        }
-else:
-    # Use SQLite for local development
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL must be set in .env. "
+        "Example: postgresql://user:password@localhost:5432/dbname"
+    )
+
+DATABASES = {
+    'default': dj_database_url.config(
+        default=DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=False,  # Set to True for production
+    )
+}
+
+# PostgreSQL connection options
+if DATABASES['default']:
+    DATABASES['default']['OPTIONS'] = {
+        'connect_timeout': 10,
     }
 
 AUTH_PASSWORD_VALIDATORS = [
