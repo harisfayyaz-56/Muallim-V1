@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Camera, Save, User, Bell, Shield, GraduationCap, Globe, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -26,8 +26,10 @@ const NAV_ITEMS = [
 ];
 
 export function ProfileSettings() {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('profile');
-  const [teacherMode, setTeacherMode] = useState(true);
+  const [teacherMode, setTeacherMode] = useState(false);
+  const [hasTeacherProfile, setHasTeacherProfile] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
@@ -66,6 +68,8 @@ export function ProfileSettings() {
           // Check if user has password (from profile response)
           const has_password = (profile as any).has_password !== false;
           setHasPassword(has_password);
+          setTeacherMode(profile.user_type === 'both' || profile.user_type === 'teacher');
+          setHasTeacherProfile((profile as any).has_teacher_profile === true);
           // profile_picture may be absolute URL depending on backend
           const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
           if (pic) setAvatarPreview(pic);
@@ -75,6 +79,35 @@ export function ProfileSettings() {
       }
     })();
   }, []);
+
+  const handleToggleTeacherMode = async () => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+
+    if (!teacherMode) {
+      // Enabling teacher mode
+      if (!hasTeacherProfile) {
+        // First time -> start onboarding
+        navigate('/settings/teacher');
+      } else {
+        // Already have profile -> enable mode
+        try {
+          await updateProfile(token, { user_type: 'both' });
+          setTeacherMode(true);
+        } catch (err) {
+          console.error('Failed to enable teacher mode:', err);
+        }
+      }
+    } else {
+      // Disabling teacher mode -> keep profile data, change user_type to student
+      try {
+        await updateProfile(token, { user_type: 'student' });
+        setTeacherMode(false);
+      } catch (err) {
+        console.error('Failed to disable teacher mode:', err);
+      }
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -403,7 +436,7 @@ export function ProfileSettings() {
                         </p>
                       </div>
                       <button
-                        onClick={() => setTeacherMode(!teacherMode)}
+                        onClick={handleToggleTeacherMode}
                         className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${teacherMode ? 'bg-[#C8962A]' : 'bg-[#E5E0D8]'}`}
                       >
                         <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${teacherMode ? 'translate-x-6' : 'translate-x-0.5'}`} />
@@ -427,7 +460,7 @@ export function ProfileSettings() {
                       <div className="text-center py-4">
                         <p className="text-[#9CA3AF] text-sm">Enable teacher mode to start accepting student bookings and earning from your expertise.</p>
                         <button
-                          onClick={() => setTeacherMode(true)}
+                          onClick={handleToggleTeacherMode}
                           className="mt-4 px-5 py-2 bg-[#0D1B2A] text-white rounded-xl text-sm hover:bg-[#1a2d45] transition-colors"
                           style={{ fontWeight: 600 }}
                         >

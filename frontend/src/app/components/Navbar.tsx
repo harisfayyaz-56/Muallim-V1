@@ -90,7 +90,7 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
                       <Link to="/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
                         <LayoutDashboard className="w-4 h-4 text-[#6B7280]" /> My Dashboard
                       </Link>
-                      {isTeacher && (
+                      {(isTeacher || profile?.user_type === 'both' || profile?.user_type === 'teacher') && (
                         <Link to="/teacher-dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
                           <GraduationCap className="w-4 h-4 text-[#6B7280]" /> Teacher Dashboard
                         </Link>
