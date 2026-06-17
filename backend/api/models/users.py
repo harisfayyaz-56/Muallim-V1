@@ -54,21 +54,67 @@ class Teacher(models.Model):
         ('expert', 'Expert (5+ years)'),
     )
 
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+
+    SESSION_DURATION_CHOICES = (
+        ('30', '30 minutes'),
+        ('60', '60 minutes'),
+        ('both', 'Both 30 and 60 minutes'),
+    )
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='teacher_profile')
     bio = models.TextField(blank=True, null=True)
     qualifications = models.TextField(help_text="List of qualifications and certifications")
+    headline = models.CharField(max_length=255, blank=True, default="")
     hourly_rate = models.DecimalField(max_digits=8, decimal_places=2, validators=[MinValueValidator(0)])
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES)
     subjects = models.CharField(max_length=500, help_text="Subjects taught, comma-separated")
+    categories = models.CharField(max_length=500, blank=True, default="", help_text="Skill categories, comma-separated")
     languages = models.CharField(max_length=255, help_text="Languages spoken, comma-separated")
+    tags = models.CharField(max_length=500, blank=True, default="", help_text="Custom skill tags, comma-separated")
     is_verified = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    rejection_reason = models.TextField(blank=True, null=True)
     verification_date = models.DateTimeField(blank=True, null=True)
     rating = models.FloatField(default=0, validators=[MinValueValidator(0), MaxValueValidator(5)])
     total_reviews = models.IntegerField(default=0)
     students_count = models.IntegerField(default=0)
     lessons_completed = models.IntegerField(default=0)
+    session_duration = models.CharField(
+        max_length=10, choices=SESSION_DURATION_CHOICES, default='both',
+        help_text="Allowed session durations for booking"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Bi-directional sync for backwards compatibility
+        if not self.headline and self.qualifications:
+            self.headline = self.qualifications
+        elif self.headline and not self.qualifications:
+            self.qualifications = self.headline
+
+        if not self.categories and self.subjects:
+            self.categories = self.subjects
+        elif self.categories and not self.subjects:
+            self.subjects = self.categories
+
+        if not self.tags and self.languages:
+            self.tags = self.languages
+        elif self.tags and not self.languages:
+            self.languages = self.tags
+
+        # Sync is_verified with status
+        if self.status == 'approved':
+            self.is_verified = True
+        else:
+            self.is_verified = False
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Teacher: {self.user.get_full_name() or self.user.username}"
