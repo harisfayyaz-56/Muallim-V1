@@ -7,7 +7,7 @@ from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.shortcuts import get_object_or_404
 
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -18,6 +18,14 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    username_field = 'email'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Replace the default 'username' field with 'email'
+        self.fields.pop('username', None)
+        self.fields['email'] = serializers.EmailField(required=True)
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -26,14 +34,34 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        data = super().validate(attrs)
-        # Prevent suspended users
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        if not email or not password:
+            raise serializers.ValidationError('Email and password are required')
+
         try:
-            profile = self.user.profile
-            if profile.is_suspended or not self.user.is_active:
-                raise Exception('Account suspended')
-        except Exception:
-            raise
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError('No active account found with the given credentials')
+
+        if not user.check_password(password):
+            raise serializers.ValidationError('No active account found with the given credentials')
+
+        if not user.is_active:
+            raise serializers.ValidationError('Account is disabled')
+
+        # Prevent suspended users
+        if hasattr(user, 'profile') and user.profile.is_suspended:
+            raise serializers.ValidationError('Account suspended')
+
+        # Generate tokens
+        refresh = self.get_token(user)
+        data = {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+        }
+        self.user = user
         return data
 
 
@@ -46,6 +74,7 @@ from .serializers import UserProfileSerializer
 import google.auth.transport.requests
 import google.oauth2.id_token
 from rest_framework_simplejwt.tokens import RefreshToken
+import os
 
 
 class RegisterView(APIView):
@@ -64,7 +93,15 @@ class RegisterView(APIView):
         if User.objects.filter(email=email).exists():
             return Response({'detail': 'User with this email already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.create_user(username=email.split('@')[0], email=email, password=password, first_name=first_name, last_name=last_name)
+        # Generate unique username from email
+        base_username = email.split('@')[0]
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        user = User.objects.create_user(username=username, email=email, password=password, first_name=first_name, last_name=last_name)
         # create profile
         UserProfile.objects.get_or_create(user=user)
 
@@ -92,6 +129,14 @@ class VerifyEmailView(APIView):
     def get(self, request):
         uidb64 = request.query_params.get('uid')
         token = request.query_params.get('token')
+        return self._verify(uidb64, token)
+
+    def post(self, request):
+        uidb64 = request.data.get('uid')
+        token = request.data.get('token')
+        return self._verify(uidb64, token)
+
+    def _verify(self, uidb64, token):
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
@@ -166,16 +211,33 @@ class GoogleAuthView(APIView):
 
         try:
             request_obj = google.auth.transport.requests.Request()
-            id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj)
+            # Validate the token and ensure the audience matches our Google client ID
+            google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+            if google_client_id:
+                id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj, google_client_id)
+            else:
+                # If client ID not set in env, fall back to standard verification
+                id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj)
         except Exception:
+            # Log exception for debugging
+            import traceback
+            traceback.print_exc()
             return Response({'detail': 'Invalid id_token'}, status=status.HTTP_400_BAD_REQUEST)
 
         email = id_info.get('email')
         if not email:
             return Response({'detail': 'Google account has no email'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Generate unique username for new users
+        base_username = email.split('@')[0]
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+
         user, created = User.objects.get_or_create(email=email, defaults={
-            'username': email.split('@')[0],
+            'username': username,
             'first_name': id_info.get('given_name', ''),
             'last_name': id_info.get('family_name', ''),
             'is_active': True,
