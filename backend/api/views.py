@@ -7,8 +7,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import UserProfile
 from .serializers import UserProfileSerializer, TimezoneUpdateSerializer, AvatarUploadSerializer, TeacherSerializer
-from .serializers import BookingSerializer
-from .models.bookings import Booking
+from .serializers import BookingSerializer, TeacherAvailabilityUpdateSerializer
+from .models.bookings import Booking, TeacherAvailability
 from .permissions import IsEmailVerified, IsNotSuspended
 from rest_framework import viewsets as rf_viewsets
 
@@ -171,6 +171,15 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = Booking.objects.select_related('teacher', 'student')
+        if user.is_staff or user.is_superuser:
+            return qs
+        if hasattr(user, 'teacher_profile'):
+            return qs.filter(teacher__user=user)
+        return qs.filter(student=user)
+
     def get_permissions(self):
         perms = super().get_permissions()
         # add extra permissions for create
@@ -187,15 +196,28 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
 class TeacherViewSet(viewsets.ModelViewSet):
     """ViewSet for teacher profile management"""
     serializer_class = TeacherSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        from rest_framework.permissions import AllowAny, IsAuthenticated
+        if self.action in ['list', 'retrieve', 'availability', 'slots']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         from .models.users import Teacher
+        if self.action in ['list', 'retrieve']:
+            if self.request.user.is_authenticated and (self.request.user.is_staff or self.request.user.is_superuser):
+                return Teacher.objects.all()
+            return Teacher.objects.filter(status='approved')
         return Teacher.objects.filter(user=self.request.user)
 
     def get_object(self):
         from .models.users import Teacher
         from django.shortcuts import get_object_or_404
+        if self.action in ['retrieve', 'approve', 'reject']:
+            lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+            filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+            return get_object_or_404(Teacher, **filter_kwargs)
         return get_object_or_404(Teacher, user=self.request.user)
 
     @action(detail=False, methods=['get', 'patch', 'post'], permission_classes=[IsAuthenticated])
@@ -203,6 +225,8 @@ class TeacherViewSet(viewsets.ModelViewSet):
         """Get, create, or update current user's teacher profile"""
         from .models.users import Teacher
         from .models import UserProfile
+        from django.core.mail import send_mail
+        from django.contrib.auth.models import User
         
         user = request.user
         profile, _ = UserProfile.objects.get_or_create(user=user)
@@ -217,6 +241,41 @@ class TeacherViewSet(viewsets.ModelViewSet):
             if profile.user_type == 'student':
                 profile.user_type = 'both'
                 profile.save()
+            
+            # Send email to admins
+            try:
+                admin_users = User.objects.filter(is_staff=True, is_superuser=True)
+                admin_emails = [admin.email for admin in admin_users if admin.email]
+                
+                if admin_emails:
+                    teacher_name = user.get_full_name() or user.username
+                    html_message = f"""
+                    <html>
+                        <body>
+                            <h2>New Teacher Application Submitted</h2>
+                            <p>A new teacher has submitted their profile for verification.</p>
+                            <p><strong>Teacher Name:</strong> {teacher_name}</p>
+                            <p><strong>Email:</strong> {user.email}</p>
+                            <p><strong>Headline:</strong> {teacher.headline or teacher.qualifications}</p>
+                            <p><strong>Hourly Rate:</strong> ${teacher.hourly_rate}</p>
+                            <p><strong>Experience Level:</strong> {teacher.experience_level}</p>
+                            <p><strong>Categories:</strong> {teacher.categories or teacher.subjects}</p>
+                            <p><a href="http://localhost:3000/admin-panel" style="padding: 10px 20px; background-color: #C8962A; color: white; text-decoration: none; border-radius: 5px;">Review in Admin Panel</a></p>
+                            <p>Best regards,<br>Muallim System</p>
+                        </body>
+                    </html>
+                    """
+                    send_mail(
+                        subject='New Teacher Application Submitted',
+                        message=f'A new teacher {teacher_name} ({user.email}) has submitted their profile for verification.',
+                        from_email=None,
+                        recipient_list=admin_emails,
+                        html_message=html_message,
+                        fail_silently=True,
+                    )
+            except Exception as e:
+                print(f"Error sending admin notification: {str(e)}")
+            
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         # For GET and PATCH:
@@ -228,8 +287,223 @@ class TeacherViewSet(viewsets.ModelViewSet):
         if request.method == 'PATCH':
             serializer = self.get_serializer(teacher_profile, data=request.data, partial=True, context={'request': request})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
+            teacher = serializer.save()
+            # Reset status to pending upon update
+            teacher.status = 'pending'
+            teacher.save()
+            return Response(self.get_serializer(teacher).data)
 
         serializer = self.get_serializer(teacher_profile, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def applications(self, request):
+        """List all teacher applications for admin review"""
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        from .models.users import Teacher
+        teachers = Teacher.objects.all().order_by('-created_at')
+        
+        data = []
+        for t in teachers:
+            user_profile = getattr(t.user, 'profile', None)
+            avatar_url = request.build_absolute_uri(user_profile.profile_picture.url) if user_profile and user_profile.profile_picture else None
+            data.append({
+                'id': str(t.id),
+                'teacherId': str(t.id),
+                'name': t.user.get_full_name() or t.user.username,
+                'email': t.user.email,
+                'headline': t.headline or t.qualifications,
+                'skills': [s.strip() for s in (t.categories or t.subjects or "").split(",") if s.strip()],
+                'location': user_profile.location if user_profile else "",
+                'hourlyRate': float(t.hourly_rate),
+                'submittedDate': t.created_at.isoformat(),
+                'status': t.status,
+                'avatar': avatar_url or "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format",
+                'rejectionReason': t.rejection_reason or ""
+            })
+        return Response(data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def approve(self, request, pk=None):
+        """Approve a teacher's verification request"""
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        from .models.users import Teacher
+        from django.shortcuts import get_object_or_404
+        from django.core.mail import send_mail
+        
+        teacher = get_object_or_404(Teacher, pk=pk)
+        teacher.status = 'approved'
+        from django.utils import timezone
+        teacher.verification_date = timezone.now()
+        teacher.save()
+        
+        # Send email to teacher
+        try:
+            teacher_name = teacher.user.get_full_name() or teacher.user.username
+            html_message = f"""
+            <html>
+                <body>
+                    <h2>Congratulations! Your Teacher Profile is Approved</h2>
+                    <p>Dear {teacher_name},</p>
+                    <p>We're excited to let you know that your teacher profile has been approved and verified by our admin team.</p>
+                    <p>You can now:</p>
+                    <ul>
+                        <li>Appear in the teacher directory</li>
+                        <li>Accept student booking requests</li>
+                        <li>Start teaching on our platform</li>
+                    </ul>
+                    <p><a href="http://localhost:3000" style="padding: 10px 20px; background-color: #C8962A; color: white; text-decoration: none; border-radius: 5px;">Go to Dashboard</a></p>
+                    <p>Best regards,<br>Muallim Team</p>
+                </body>
+            </html>
+            """
+            send_mail(
+                subject='Your Teacher Profile Has Been Approved',
+                message=f'Your teacher profile has been approved. Log in to your dashboard to get started.',
+                from_email=None,
+                recipient_list=[teacher.user.email],
+                html_message=html_message,
+                fail_silently=True,
+            )
+        except Exception as e:
+            print(f"Error sending approval email: {str(e)}")
+        
+        return Response({'status': 'approved'})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        """Reject a teacher's verification request with a reason"""
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        from .models.users import Teacher
+        from django.shortcuts import get_object_or_404
+        from django.core.mail import send_mail
+        
+        teacher = get_object_or_404(Teacher, pk=pk)
+        reason = request.data.get('reason', '')
+        teacher.status = 'rejected'
+        teacher.rejection_reason = reason
+        teacher.save()
+        
+        # Send email to teacher
+        try:
+            teacher_name = teacher.user.get_full_name() or teacher.user.username
+            html_message = f"""
+            <html>
+                <body>
+                    <h2>Teacher Profile Review</h2>
+                    <p>Dear {teacher_name},</p>
+                    <p>Thank you for submitting your teacher profile for verification. After review by our admin team, we are unable to approve your profile at this time.</p>
+                    <p><strong>Reason:</strong> {reason}</p>
+                    <p>You can update your profile and resubmit for review. Please feel free to contact support if you have any questions.</p>
+                    <p><a href="http://localhost:3000/teacher-settings" style="padding: 10px 20px; background-color: #C8962A; color: white; text-decoration: none; border-radius: 5px;">Update Profile</a></p>
+                    <p>Best regards,<br>Muallim Team</p>
+                </body>
+            </html>
+            """
+            send_mail(
+                subject='Teacher Profile Review Result',
+                message=f'Your teacher profile was rejected. Reason: {reason}',
+                from_email=None,
+                recipient_list=[teacher.user.email],
+                html_message=html_message,
+                fail_silently=True,
+            )
+        except Exception as e:
+            print(f"Error sending rejection email: {str(e)}")
+        
+        return Response({'status': 'rejected', 'rejection_reason': reason})
+
+    @action(detail=False, methods=['get', 'patch'], permission_classes=[IsAuthenticated], url_path='me/availability')
+    def me_availability(self, request):
+        """Get or update current teacher's weekly availability."""
+        from .models.users import Teacher
+        from .availability_utils import (
+            availabilities_to_grid, grid_to_availability_rows, get_teacher_timezone,
+        )
+
+        try:
+            teacher = request.user.teacher_profile
+        except Exception:
+            return Response({'detail': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'PATCH':
+            serializer = TeacherAvailabilityUpdateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+
+            if 'session_duration' in data:
+                teacher.session_duration = data['session_duration']
+                teacher.save(update_fields=['session_duration'])
+
+            if 'grid' in data:
+                TeacherAvailability.objects.filter(teacher=teacher).delete()
+                rows = grid_to_availability_rows(data['grid'])
+                TeacherAvailability.objects.bulk_create([
+                    TeacherAvailability(teacher=teacher, **row) for row in rows
+                ])
+
+        grid = availabilities_to_grid(teacher.availabilities.all())
+        return Response({
+            'timezone': get_teacher_timezone(teacher),
+            'session_duration': teacher.session_duration,
+            'grid': grid,
+        })
+
+    @action(detail=True, methods=['get'])
+    def availability(self, request, pk=None):
+        """Public weekly availability for a teacher."""
+        from .availability_utils import (
+            availabilities_to_slots_by_day, convert_weekly_slots_to_timezone, get_teacher_timezone,
+        )
+
+        teacher = self.get_object()
+        slots_by_day = availabilities_to_slots_by_day(teacher.availabilities.filter(is_available=True))
+        teacher_tz = get_teacher_timezone(teacher)
+        viewer_tz = request.query_params.get('timezone', teacher_tz)
+
+        return Response({
+            'timezone': teacher_tz,
+            'viewer_timezone': viewer_tz,
+            'session_duration': teacher.session_duration,
+            'slots_by_day': slots_by_day,
+            'slots_by_day_viewer': convert_weekly_slots_to_timezone(slots_by_day, teacher_tz, viewer_tz),
+        })
+
+    @action(detail=True, methods=['get'])
+    def slots(self, request, pk=None):
+        """Get bookable slots for a specific date, excluding booked times."""
+        from datetime import datetime
+        from .availability_utils import generate_slots_for_date, get_teacher_timezone
+
+        teacher = self.get_object()
+        date_str = request.query_params.get('date')
+        duration = int(request.query_params.get('duration', 60))
+        viewer_tz = request.query_params.get('timezone', get_teacher_timezone(teacher))
+
+        if not date_str:
+            return Response({'detail': 'date query parameter is required (YYYY-MM-DD)'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+
+        active_bookings = teacher.bookings.filter(
+            status__in=['pending', 'confirmed'],
+            scheduled_date__date=target_date,
+        )
+        slots = generate_slots_for_date(teacher, target_date, duration, viewer_tz, active_bookings)
+
+        return Response({
+            'date': date_str,
+            'duration': duration,
+            'teacher_timezone': get_teacher_timezone(teacher),
+            'viewer_timezone': viewer_tz,
+            'slots': slots,
+        })

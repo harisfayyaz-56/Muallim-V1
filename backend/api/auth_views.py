@@ -22,9 +22,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Replace the default 'username' field with 'email'
+        # Accept either email or username in the same field.
         self.fields.pop('username', None)
-        self.fields['email'] = serializers.EmailField(required=True)
+        self.fields['email'] = serializers.CharField(required=True)
 
     @classmethod
     def get_token(cls, user):
@@ -34,15 +34,19 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        email = attrs.get('email')
+        login_value = attrs.get('email')
         password = attrs.get('password')
 
-        if not email or not password:
-            raise serializers.ValidationError('Email and password are required')
+        if not login_value or not password:
+            raise serializers.ValidationError('Email or username and password are required')
 
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        user = None
+        if '@' in login_value:
+            user = User.objects.filter(email=login_value).first()
+        else:
+            user = User.objects.filter(username=login_value).first()
+
+        if not user:
             raise serializers.ValidationError('No active account found with the given credentials')
 
         if not user.check_password(password):
@@ -51,8 +55,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError('Account is disabled')
 
+        # Check email verification for regular users only.
+        # Admin/superuser accounts must be able to log in to manage the platform.
+        try:
+            profile = user.profile
+        except Exception:
+            profile = None
+
+        if profile and not profile.email_verified and not (user.is_staff or user.is_superuser):
+            raise serializers.ValidationError('Email not verified. Please check your email for verification link.')
+
         # Prevent suspended users
-        if hasattr(user, 'profile') and user.profile.is_suspended:
+        if profile and profile.is_suspended:
             raise serializers.ValidationError('Account suspended')
 
         # Generate tokens
@@ -103,24 +117,97 @@ class RegisterView(APIView):
 
         user = User.objects.create_user(username=username, email=email, password=password, first_name=first_name, last_name=last_name)
         # create profile
-        UserProfile.objects.get_or_create(user=user)
+        profile = UserProfile.objects.create(user=user)
 
-        # send verification email
-        token = default_token_generator.make_token(user)
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        verify_path = reverse('api-verify-email')
-        current_site = get_current_site(request)
-        verify_url = f"{request.scheme}://{current_site.domain}{verify_path}?uid={uid}&token={token}"
+        # Send verification email
+        self._send_verification_email(user, request)
 
-        send_mail(
-            subject='Verify your email',
-            message=f'Please verify your email by visiting: {verify_url}',
-            from_email=None,
-            recipient_list=[email],
-            fail_silently=True,
-        )
+        return Response({
+            'detail': 'User created. Verification email sent.',
+            'email': email,
+            'email_verified': False
+        }, status=status.HTTP_201_CREATED)
 
-        return Response({'detail': 'User created. Verification email sent.'}, status=status.HTTP_201_CREATED)
+    def _send_verification_email(self, user, request):
+        """Send verification email to user"""
+        try:
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
+            verify_url = f"{frontend_domain}/verify-email?uid={uid}&token={token}"
+            
+            html_message = f"""
+            <html>
+                <body>
+                    <h2>Welcome to Muallim!</h2>
+                    <p>Please verify your email by clicking the link below:</p>
+                    <a href="{verify_url}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
+                        Verify Email
+                    </a>
+                    <p>Or copy this link: {verify_url}</p>
+                    <p>This link will expire in 24 hours.</p>
+                </body>
+            </html>
+            """
+            
+            send_mail(
+                subject='Verify your Muallim Account',
+                message=f'Please verify your email by visiting: {verify_url}',
+                from_email=None,
+                recipient_list=[user.email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+        except Exception as e:
+            print(f"Error sending verification email: {str(e)}")
+            # Don't fail the registration if email sending fails
+
+
+class ResendVerificationEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """Resend verification email"""
+        email = request.data.get('email')
+        if not email:
+            return Response({'detail': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(email=email)
+            profile = user.profile
+            
+            if profile.email_verified:
+                return Response({'detail': 'Email already verified'}, status=status.HTTP_200_OK)
+            
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
+            verify_url = f"{frontend_domain}/verify-email?uid={uid}&token={token}"
+            
+            html_message = f"""
+            <html>
+                <body>
+                    <h2>Verify your Muallim Account</h2>
+                    <p>Please verify your email by clicking the link below:</p>
+                    <a href="{verify_url}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
+                        Verify Email
+                    </a>
+                    <p>Or copy this link: {verify_url}</p>
+                </body>
+            </html>
+            """
+            
+            send_mail(
+                subject='Verify your Muallim Account',
+                message=f'Please verify your email by visiting: {verify_url}',
+                from_email=None,
+                recipient_list=[user.email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+            return Response({'detail': 'Verification email sent'}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class VerifyEmailView(APIView):
@@ -147,7 +234,22 @@ class VerifyEmailView(APIView):
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.email_verified = True
             profile.save()
-            return Response({'detail': 'Email verified successfully'}, status=status.HTTP_200_OK)
+            
+            # Auto-login user by generating tokens
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'detail': 'Email verified successfully',
+                'email_verified': True,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'username': user.username
+                }
+            }, status=status.HTTP_200_OK)
         return Response({'detail': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
 
 

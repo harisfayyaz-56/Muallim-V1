@@ -20,10 +20,28 @@ class BookingSerializer(rf_serializers.ModelSerializer):
     def validate_teacher_id(self, value):
         from .models.users import Teacher
         try:
-            Teacher.objects.get(pk=value)
+            teacher = Teacher.objects.get(pk=value)
+            if teacher.status != 'approved':
+                raise rf_serializers.ValidationError('Teacher is not available for bookings')
         except Teacher.DoesNotExist:
             raise rf_serializers.ValidationError('Teacher not found')
         return value
+
+    def validate(self, attrs):
+        from .models.users import Teacher
+        from .availability_utils import validate_booking_slot
+
+        teacher_id = self.initial_data.get('teacher_id')
+        scheduled_date = attrs.get('scheduled_date')
+        duration_minutes = attrs.get('duration_minutes', 60)
+
+        if teacher_id and scheduled_date:
+            try:
+                teacher = Teacher.objects.get(pk=teacher_id)
+                validate_booking_slot(teacher, scheduled_date, duration_minutes)
+            except ValueError as e:
+                raise rf_serializers.ValidationError({'scheduled_date': str(e)})
+        return attrs
 
     def create(self, validated_data):
         teacher_id = validated_data.pop('teacher_id')
@@ -31,6 +49,11 @@ class BookingSerializer(rf_serializers.ModelSerializer):
         teacher = Teacher.objects.get(pk=teacher_id)
         booking = Booking.objects.create(teacher=teacher, **validated_data)
         return booking
+
+
+class TeacherAvailabilityUpdateSerializer(rf_serializers.Serializer):
+    grid = rf_serializers.DictField(child=rf_serializers.ListField(child=rf_serializers.CharField()), required=False)
+    session_duration = rf_serializers.ChoiceField(choices=['30', '60', 'both'], required=False)
 
 
 
@@ -79,24 +102,45 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class TeacherSerializer(serializers.ModelSerializer):
     """Serializer for teacher profile"""
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
-    status = serializers.SerializerMethodField()
+    status = serializers.CharField(read_only=True)
+    rejection_reason = serializers.CharField(read_only=True)
+    name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
 
     class Meta:
         from .models.users import Teacher
         model = Teacher
         fields = [
-            'id', 'user', 'bio', 'qualifications', 'hourly_rate',
-            'experience_level', 'subjects', 'languages', 'is_verified',
-            'status', 'rating', 'total_reviews', 'students_count',
-            'lessons_completed', 'created_at', 'updated_at'
+            'id', 'user', 'bio', 'headline', 'categories', 'tags', 'qualifications', 'hourly_rate',
+            'experience_level', 'subjects', 'languages', 'is_verified', 'session_duration',
+            'status', 'rejection_reason', 'rating', 'total_reviews', 'students_count',
+            'lessons_completed', 'created_at', 'updated_at',
+            'name', 'email', 'avatar', 'location'
         ]
         read_only_fields = [
-            'id', 'is_verified', 'status', 'rating', 'total_reviews',
-            'students_count', 'lessons_completed', 'created_at', 'updated_at'
+            'id', 'is_verified', 'status', 'rejection_reason', 'rating', 'total_reviews',
+            'students_count', 'lessons_completed', 'created_at', 'updated_at',
+            'name', 'email', 'avatar', 'location'
         ]
 
-    def get_status(self, obj):
-        return 'approved' if obj.is_verified else 'pending'
+    def get_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+
+    def get_email(self, obj):
+        return obj.user.email
+
+    def get_avatar(self, obj):
+        profile = getattr(obj.user, 'profile', None)
+        request = self.context.get('request')
+        if profile and profile.profile_picture:
+            return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
+        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+
+    def get_location(self, obj):
+        profile = getattr(obj.user, 'profile', None)
+        return profile.location if profile else ""
 
 
 class TimezoneUpdateSerializer(serializers.ModelSerializer):
