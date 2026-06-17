@@ -40,10 +40,15 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         obj, created = UserProfile.objects.get_or_create(user=self.request.user)
         return obj
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['get', 'patch'], permission_classes=[IsAuthenticated])
     def me(self, request):
-        """Get current user's profile"""
+        """Get or update current user's profile"""
         profile = self.get_object()
+        if request.method == 'PATCH':
+            serializer = self.get_serializer(profile, data=request.data, partial=True, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
         serializer = self.get_serializer(profile, context={'request': request})
         return Response(serializer.data)
 
@@ -80,11 +85,13 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         
         if serializer.is_valid():
             serializer.save()
+            # Build absolute URI for the profile picture
+            avatar_url = request.build_absolute_uri(profile.profile_picture.url) if profile.profile_picture else None
             return Response(
                 {
                     'success': True,
                     'message': 'Avatar uploaded successfully',
-                    'profile_picture_url': profile.profile_picture.url if profile.profile_picture else None
+                    'profile_picture_url': avatar_url
                 },
                 status=status.HTTP_200_OK
             )
@@ -96,6 +103,65 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 'errors': serializer.errors
             },
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+    @action(detail=False, methods=['post'], url_path='set-password', permission_classes=[IsAuthenticated])
+    def set_password(self, request):
+        """Set password for user (for Google sign-in users without password)"""
+        user = request.user
+        new_password = request.data.get('new_password')
+        
+        if not new_password:
+            return Response(
+                {'detail': 'new_password is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(new_password) < 8:
+            return Response(
+                {'detail': 'Password must be at least 8 characters long'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user.set_password(new_password)
+        user.save()
+        
+        return Response(
+            {'detail': 'Password set successfully'},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['post'], url_path='change-password', permission_classes=[IsAuthenticated])
+    def change_password(self, request):
+        """Change password for authenticated user"""
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        
+        if not current_password or not new_password:
+            return Response(
+                {'detail': 'current_password and new_password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not user.check_password(current_password):
+            return Response(
+                {'detail': 'Current password is incorrect'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(new_password) < 8:
+            return Response(
+                {'detail': 'Password must be at least 8 characters long'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user.set_password(new_password)
+        user.save()
+        
+        return Response(
+            {'detail': 'Password changed successfully'},
+            status=status.HTTP_200_OK
         )
 
 

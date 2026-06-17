@@ -40,15 +40,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     first_name = serializers.CharField(source='user.first_name', required=False)
     last_name = serializers.CharField(source='user.last_name', required=False)
+    has_password = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'user_type', 'phone', 'bio', 'profile_picture', 'location',
-            'timezone', 'currency', 'created_at', 'updated_at'
+            'timezone', 'currency', 'created_at', 'updated_at', 'has_password'
         ]
         read_only_fields = ['id', 'currency', 'created_at', 'updated_at']
+
+    def get_has_password(self, obj):
+        return obj.user.has_usable_password()
 
     def update(self, instance, validated_data):
         """Handle nested user data updates"""
