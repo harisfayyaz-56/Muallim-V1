@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Save, Plus, X, ChevronLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { TEACHERS } from '../data/mockData';
+import { getTeacherProfile, createTeacherProfile, updateTeacherProfile } from '../../api/profile';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIME_SLOTS = ['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
@@ -21,17 +21,44 @@ const INITIAL_AVAILABILITY: Record<string, string[]> = {
 const SKILL_SUGGESTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Arabic', 'Programming', 'Python', 'JavaScript', 'React', 'Business', 'Finance', 'IELTS', 'SAT', 'IGCSE', 'A-Level', 'IB', 'Guitar', 'Piano', 'Quran'];
 
 export function TeacherSettings() {
-  const teacher = TEACHERS[0];
   const [activeTab, setActiveTab] = useState<'profile' | 'availability' | 'pricing'>('profile');
   const [availability, setAvailability] = useState(INITIAL_AVAILABILITY);
-  const [skills, setSkills] = useState([...teacher.skills]);
-  const [tags, setTags] = useState([...teacher.tags]);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [newSkill, setNewSkill] = useState('');
   const [newTag, setNewTag] = useState('');
-  const [hourlyRate, setHourlyRate] = useState(teacher.hourlyRate);
-  const [form, setForm] = useState({ headline: teacher.headline, bio: teacher.bio });
+  const [hourlyRate, setHourlyRate] = useState(100);
+  const [form, setForm] = useState({ headline: '', bio: '' });
+  const [experienceLevel, setExperienceLevel] = useState('intermediate');
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
+  const [hasTeacherProfile, setHasTeacherProfile] = useState(false);
   const [sessionDuration, setSessionDuration] = useState<30 | 60 | 'both'>(60);
+
+  useEffect(() => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const tProfile = await getTeacherProfile(token);
+        if (tProfile) {
+          setHasTeacherProfile(true);
+          setForm({
+            headline: tProfile.qualifications || '',
+            bio: tProfile.bio || '',
+          });
+          setSkills(tProfile.subjects ? tProfile.subjects.split(',').map(s => s.trim()).filter(Boolean) : []);
+          setTags(tProfile.languages ? tProfile.languages.split(',').map(t => t.trim()).filter(Boolean) : []);
+          setHourlyRate(Number(tProfile.hourly_rate));
+          setExperienceLevel(tProfile.experience_level || 'intermediate');
+          setProfileStatus(tProfile.status || 'pending');
+        }
+      } catch (err) {
+        setHasTeacherProfile(false);
+      }
+    })();
+  }, []);
 
   const toggleSlot = (day: string, time: string) => {
     setAvailability(prev => {
@@ -41,9 +68,32 @@ export function TeacherSettings() {
     });
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+
+    const payload = {
+      bio: form.bio,
+      qualifications: form.headline || 'Tutor',
+      hourly_rate: hourlyRate,
+      experience_level: experienceLevel,
+      subjects: skills.join(', '),
+      languages: tags.join(', '),
+    };
+
+    try {
+      setSaveError('');
+      if (hasTeacherProfile) {
+        await updateTeacherProfile(token, payload);
+      } else {
+        await createTeacherProfile(token, payload);
+        setHasTeacherProfile(true);
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to save teacher profile changes');
+    }
   };
 
   return (
@@ -61,11 +111,11 @@ export function TeacherSettings() {
             </h1>
 
             <div className="flex items-center gap-2 mt-3">
-              {teacher.status === 'approved' ? (
+              {profileStatus === 'approved' ? (
                 <div className="flex items-center gap-1.5 text-emerald-400 text-xs">
                   <CheckCircle className="w-4 h-4" /> Profile Approved — visible to students
                 </div>
-              ) : teacher.status === 'pending' ? (
+              ) : profileStatus === 'pending' ? (
                 <div className="flex items-center gap-1.5 text-[#C8962A] text-xs">
                   <AlertCircle className="w-4 h-4" /> Pending Admin Review
                 </div>
@@ -112,6 +162,19 @@ export function TeacherSettings() {
                       className="w-full px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all text-sm"
                     />
                     <p className="text-xs text-[#9CA3AF] mt-1">Short, compelling headline. Max 120 characters.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>Experience Level</label>
+                    <select
+                      value={experienceLevel}
+                      onChange={e => setExperienceLevel(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all text-sm"
+                    >
+                      <option value="beginner">Beginner (0-1 year)</option>
+                      <option value="intermediate">Intermediate (1-3 years)</option>
+                      <option value="advanced">Advanced (3-5 years)</option>
+                      <option value="expert">Expert (5+ years)</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>Bio</label>
@@ -199,6 +262,11 @@ export function TeacherSettings() {
                 </div>
               </div>
 
+              {saveError && (
+                <div className="p-3 text-red-600 bg-red-50 border border-red-200 rounded-xl text-sm mb-3">
+                  {saveError}
+                </div>
+              )}
               <div className="flex justify-end">
                 <button onClick={handleSave} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`} style={{ fontWeight: 600 }}>
                   {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> Save Profile</>}

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Calendar, DollarSign, Users, Clock, Star, Settings, ExternalLink, CheckCircle, AlertCircle, TrendingUp, ArrowRight } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { UPCOMING_SESSIONS, PAST_SESSIONS, TEACHERS } from '../data/mockData';
+import { getProfile, getTeacherProfile } from '../../api/profile';
+import { UPCOMING_SESSIONS, PAST_SESSIONS } from '../data/mockData';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
@@ -20,8 +21,36 @@ const GRID: Record<string, string[]> = {
 
 export function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'availability'>('overview');
-  const teacher = TEACHERS[0];
-  const profileStatus = 'approved';
+  const [teacherName, setTeacherName] = useState('Teacher');
+  const [teacherAvatar, setTeacherAvatar] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format');
+  const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
+
+  useEffect(() => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const profile = await getProfile(token);
+        if (profile) {
+          setTeacherName(`${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username);
+          const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
+          if (pic) setTeacherAvatar(pic);
+        }
+      } catch (err) {
+        console.error('TeacherDashboard failed to load profile:', err);
+      }
+
+      try {
+        const tProfile = await getTeacherProfile(token);
+        if (tProfile) {
+          setProfileStatus(tProfile.status || 'pending');
+        }
+      } catch (err) {
+        // Not onboarding or not approved yet
+        setProfileStatus('pending');
+      }
+    })();
+  }, []);
 
   const earningsData = [
     { month: 'Sep', amount: 2400 },
@@ -42,11 +71,11 @@ export function TeacherDashboard() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-4">
-                <img src={teacher.avatar} alt={teacher.name} className="w-14 h-14 rounded-xl object-cover border-2 border-[#C8962A]/30" />
+                <img src={teacherAvatar} alt={teacherName} className="w-14 h-14 rounded-xl object-cover border-2 border-[#C8962A]/30" />
                 <div>
                   <p className="text-[#9CA3AF] text-sm">Teacher Dashboard</p>
                   <h1 className="text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.75rem' }}>
-                    {teacher.name}
+                    {teacherName}
                   </h1>
                 </div>
               </div>
