@@ -1,6 +1,37 @@
 from rest_framework import serializers
 from .models import UserProfile
 from .utils.upload_validators import validate_avatar_file
+from .models.bookings import Booking
+from rest_framework import serializers as rf_serializers
+
+
+class BookingSerializer(rf_serializers.ModelSerializer):
+    student = rf_serializers.HiddenField(default=rf_serializers.CurrentUserDefault())
+    teacher_id = rf_serializers.IntegerField(write_only=True, required=True)
+
+    class Meta:
+        model = Booking
+        fields = [
+            'id', 'student', 'teacher_id', 'subject', 'description', 'scheduled_date',
+            'duration_minutes', 'status', 'amount', 'meeting_link', 'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'student', 'status', 'created_at', 'updated_at']
+
+    def validate_teacher_id(self, value):
+        from .models.users import Teacher
+        try:
+            Teacher.objects.get(pk=value)
+        except Teacher.DoesNotExist:
+            raise rf_serializers.ValidationError('Teacher not found')
+        return value
+
+    def create(self, validated_data):
+        teacher_id = validated_data.pop('teacher_id')
+        from .models.users import Teacher
+        teacher = Teacher.objects.get(pk=teacher_id)
+        booking = Booking.objects.create(teacher=teacher, **validated_data)
+        return booking
+
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

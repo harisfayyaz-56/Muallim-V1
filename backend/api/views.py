@@ -7,6 +7,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import UserProfile
 from .serializers import UserProfileSerializer, TimezoneUpdateSerializer, AvatarUploadSerializer
+from .serializers import BookingSerializer
+from .models.bookings import Booking
+from .permissions import IsEmailVerified, IsNotSuspended
+from rest_framework import viewsets as rf_viewsets
 
 
 def health_check(request):
@@ -93,3 +97,22 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+class BookingViewSet(rf_viewsets.ModelViewSet):
+    """ViewSet for bookings. Creation blocked for unverified or suspended users."""
+    serializer_class = BookingSerializer
+    queryset = Booking.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        # add extra permissions for create
+        if self.action == 'create':
+            perms.append(IsEmailVerified())
+            perms.append(IsNotSuspended())
+        return perms
+
+    def perform_create(self, serializer):
+        # ensure student is request.user
+        serializer.save(student=self.request.user)
