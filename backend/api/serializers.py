@@ -41,18 +41,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='user.first_name', required=False)
     last_name = serializers.CharField(source='user.last_name', required=False)
     has_password = serializers.SerializerMethodField()
+    has_teacher_profile = serializers.SerializerMethodField()
+    teacher_status = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'user_type', 'phone', 'bio', 'profile_picture', 'location',
-            'timezone', 'currency', 'created_at', 'updated_at', 'has_password'
+            'timezone', 'currency', 'created_at', 'updated_at', 'has_password',
+            'has_teacher_profile', 'teacher_status'
         ]
         read_only_fields = ['id', 'currency', 'created_at', 'updated_at']
 
     def get_has_password(self, obj):
         return obj.user.has_usable_password()
+
+    def get_has_teacher_profile(self, obj):
+        return hasattr(obj.user, 'teacher_profile')
+
+    def get_teacher_status(self, obj):
+        if hasattr(obj.user, 'teacher_profile'):
+            return 'approved' if obj.user.teacher_profile.is_verified else 'pending'
+        return None
 
     def update(self, instance, validated_data):
         """Handle nested user data updates"""
@@ -63,6 +74,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
             user.last_name = user_data.get('last_name', user.last_name)
             user.save()
         return super().update(instance, validated_data)
+
+
+class TeacherSerializer(serializers.ModelSerializer):
+    """Serializer for teacher profile"""
+    user = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models.users import Teacher
+        model = Teacher
+        fields = [
+            'id', 'user', 'bio', 'qualifications', 'hourly_rate',
+            'experience_level', 'subjects', 'languages', 'is_verified',
+            'status', 'rating', 'total_reviews', 'students_count',
+            'lessons_completed', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'is_verified', 'status', 'rating', 'total_reviews',
+            'students_count', 'lessons_completed', 'created_at', 'updated_at'
+        ]
+
+    def get_status(self, obj):
+        return 'approved' if obj.is_verified else 'pending'
 
 
 class TimezoneUpdateSerializer(serializers.ModelSerializer):

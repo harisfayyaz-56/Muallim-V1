@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import UserProfile
-from .serializers import UserProfileSerializer, TimezoneUpdateSerializer, AvatarUploadSerializer
+from .serializers import UserProfileSerializer, TimezoneUpdateSerializer, AvatarUploadSerializer, TeacherSerializer
 from .serializers import BookingSerializer
 from .models.bookings import Booking
 from .permissions import IsEmailVerified, IsNotSuspended
@@ -182,3 +182,54 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # ensure student is request.user
         serializer.save(student=self.request.user)
+
+
+class TeacherViewSet(viewsets.ModelViewSet):
+    """ViewSet for teacher profile management"""
+    serializer_class = TeacherSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from .models.users import Teacher
+        return Teacher.objects.filter(user=self.request.user)
+
+    def get_object(self):
+        from .models.users import Teacher
+        from django.shortcuts import get_object_or_404
+        return get_object_or_404(Teacher, user=self.request.user)
+
+    @action(detail=False, methods=['get', 'patch', 'post'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        """Get, create, or update current user's teacher profile"""
+        from .models.users import Teacher
+        from .models import UserProfile
+        
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        
+        if request.method == 'POST':
+            if hasattr(user, 'teacher_profile'):
+                return Response({'detail': 'Teacher profile already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            serializer = self.get_serializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            teacher = serializer.save()
+            # If the user is currently a student, update user_type to 'both'
+            if profile.user_type == 'student':
+                profile.user_type = 'both'
+                profile.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # For GET and PATCH:
+        try:
+            teacher_profile = user.teacher_profile
+        except Exception:
+            return Response({'detail': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'PATCH':
+            serializer = self.get_serializer(teacher_profile, data=request.data, partial=True, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+
+        serializer = self.get_serializer(teacher_profile, context={'request': request})
+        return Response(serializer.data)

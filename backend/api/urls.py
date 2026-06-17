@@ -10,6 +10,7 @@ from rest_framework_simplejwt.views import (
 router = DefaultRouter()
 router.register(r'profile', views.UserProfileViewSet, basename='profile')
 router.register(r'bookings', views.BookingViewSet, basename='booking')
+router.register(r'teacher', views.TeacherViewSet, basename='teacher')
 
 urlpatterns = [
     path('health/', views.health_check),

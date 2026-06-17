@@ -57,8 +57,9 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL')
+IS_DOCKER = os.path.exists('/.dockerenv') or os.environ.get('IS_DOCKER') == 'True'
 
-if DATABASE_URL:
+if DATABASE_URL and (IS_DOCKER or '@db:' not in DATABASE_URL):
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
