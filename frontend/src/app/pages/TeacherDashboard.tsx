@@ -4,26 +4,20 @@ import { Calendar, DollarSign, Users, Clock, Star, Settings, ExternalLink, Check
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getProfile, getTeacherProfile } from '../../api/profile';
+import { getMyAvailability } from '../../api/availability';
 import { UPCOMING_SESSIONS, PAST_SESSIONS } from '../data/mockData';
+import { DAYS_SHORT, TIME_SLOTS, EMPTY_GRID, countWeeklySlots } from '../utils/availability';
+import { getTimezoneAbbr } from '../../utils/preferences';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
-
-const GRID: Record<string, string[]> = {
-  Mon: ['09:00', '10:00', '14:00', '15:00', '16:00', '18:00', '19:00'],
-  Tue: ['09:00', '10:00', '14:00', '15:00', '18:00', '19:00'],
-  Wed: ['09:00', '10:00', '14:00', '15:00', '16:00'],
-  Thu: ['14:00', '15:00', '16:00', '18:00', '19:00', '20:00'],
-  Fri: [],
-  Sat: ['10:00', '11:00', '14:00', '15:00'],
-  Sun: ['10:00', '11:00', '14:00', '15:00', '16:00'],
-};
+const DAYS = DAYS_SHORT;
 
 export function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'availability'>('overview');
   const [teacherName, setTeacherName] = useState('Teacher');
   const [teacherAvatar, setTeacherAvatar] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format');
   const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
+  const [availabilityGrid, setAvailabilityGrid] = useState<Record<string, string[]>>({ ...EMPTY_GRID });
+  const [teacherTimezone, setTeacherTimezone] = useState('Asia/Dubai');
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
@@ -35,6 +29,7 @@ export function TeacherDashboard() {
           setTeacherName(`${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username);
           const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
           if (pic) setTeacherAvatar(pic);
+          if (profile.timezone) setTeacherTimezone(profile.timezone);
         }
       } catch (err) {
         console.error('TeacherDashboard failed to load profile:', err);
@@ -46,8 +41,15 @@ export function TeacherDashboard() {
           setProfileStatus(tProfile.status || 'pending');
         }
       } catch (err) {
-        // Not onboarding or not approved yet
         setProfileStatus('pending');
+      }
+
+      try {
+        const avail = await getMyAvailability(token);
+        if (avail.grid) setAvailabilityGrid(avail.grid);
+        if (avail.timezone) setTeacherTimezone(avail.timezone);
+      } catch {
+        // No availability set yet
       }
     })();
   }, []);
@@ -237,7 +239,9 @@ export function TeacherDashboard() {
               <div className="px-5 py-4 border-b border-[rgba(13,27,42,0.06)] flex items-center justify-between">
                 <div>
                   <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Weekly Availability</h3>
-                  <p className="text-[#9CA3AF] text-xs mt-0.5">All times in Dubai (GST, UTC+4). Click to toggle slots.</p>
+                  <p className="text-[#9CA3AF] text-xs mt-0.5">
+                    All times in {getTimezoneAbbr(teacherTimezone)} · {countWeeklySlots(availabilityGrid)} open slots
+                  </p>
                 </div>
                 <Link to="/settings/teacher" className="flex items-center gap-1.5 text-xs text-[#C8962A] hover:underline">
                   <Settings className="w-3.5 h-3.5" /> Manage in Settings
@@ -247,7 +251,7 @@ export function TeacherDashboard() {
                 <table className="w-full min-w-[640px]">
                   <thead>
                     <tr>
-                      <th className="w-20 px-4 py-3 text-left text-xs text-[#9CA3AF]">Time</th>
+                      <th className="w-20 px-4 py-3 text-left text-xs text-[#9CA3AF]">Time ({getTimezoneAbbr(teacherTimezone)})</th>
                       {DAYS.map(d => (
                         <th key={d} className="px-2 py-3 text-center text-xs text-[#0D1B2A]" style={{ fontWeight: 600 }}>{d}</th>
                       ))}
@@ -258,7 +262,7 @@ export function TeacherDashboard() {
                       <tr key={time} className="border-t border-[rgba(13,27,42,0.04)]">
                         <td className="px-4 py-2 text-xs text-[#9CA3AF]">{time}</td>
                         {DAYS.map(day => {
-                          const available = (GRID[day] || []).includes(time);
+                          const available = (availabilityGrid[day] || []).includes(time);
                           return (
                             <td key={day} className="px-2 py-2 text-center">
                               <div className={`w-8 h-8 rounded-lg mx-auto flex items-center justify-center cursor-pointer transition-colors ${

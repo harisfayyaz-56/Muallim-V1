@@ -3,20 +3,14 @@ import { Link } from 'react-router';
 import { Save, Plus, X, ChevronLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { getTeacherProfile, createTeacherProfile, updateTeacherProfile } from '../../api/profile';
+import { getTeacherProfile, createTeacherProfile, updateTeacherProfile, getProfile } from '../../api/profile';
+import { getMyAvailability, updateMyAvailability } from '../../api/availability';
+import { DAYS_SHORT, TIME_SLOTS, EMPTY_GRID } from '../utils/availability';
+import { getTimezoneAbbr } from '../../utils/preferences';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const TIME_SLOTS = ['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
+const DAYS = DAYS_SHORT;
 
-const INITIAL_AVAILABILITY: Record<string, string[]> = {
-  Mon: ['09:00', '10:00', '14:00', '15:00', '16:00', '18:00', '19:00'],
-  Tue: ['09:00', '10:00', '14:00', '15:00', '18:00', '19:00'],
-  Wed: ['09:00', '10:00', '14:00', '15:00', '16:00'],
-  Thu: ['14:00', '15:00', '16:00', '18:00', '19:00', '20:00'],
-  Fri: [],
-  Sat: ['10:00', '11:00', '14:00', '15:00'],
-  Sun: ['10:00', '11:00', '14:00', '15:00', '16:00'],
-};
+const INITIAL_AVAILABILITY: Record<string, string[]> = { ...EMPTY_GRID };
 
 const SKILL_SUGGESTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Arabic', 'Programming', 'Python', 'JavaScript', 'React', 'Business', 'Finance', 'IELTS', 'SAT', 'IGCSE', 'A-Level', 'IB', 'Guitar', 'Piano', 'Quran'];
 
@@ -33,28 +27,52 @@ export function TeacherSettings() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
+  const [rejectionReason, setRejectionReason] = useState('');
   const [hasTeacherProfile, setHasTeacherProfile] = useState(false);
   const [sessionDuration, setSessionDuration] = useState<30 | 60 | 'both'>(60);
+  const [teacherTimezone, setTeacherTimezone] = useState('Asia/Dubai');
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
     if (!token) return;
     (async () => {
       try {
-        const tProfile = await getTeacherProfile(token);
+        const [tProfile, userProfile] = await Promise.all([
+          getTeacherProfile(token).catch(() => null),
+          getProfile(token).catch(() => null),
+        ]);
+        if (userProfile?.timezone) setTeacherTimezone(userProfile.timezone);
         if (tProfile) {
           setHasTeacherProfile(true);
           setForm({
-            headline: tProfile.qualifications || '',
+            headline: tProfile.headline || tProfile.qualifications || '',
             bio: tProfile.bio || '',
           });
-          setSkills(tProfile.subjects ? tProfile.subjects.split(',').map(s => s.trim()).filter(Boolean) : []);
-          setTags(tProfile.languages ? tProfile.languages.split(',').map(t => t.trim()).filter(Boolean) : []);
+          const subjectsStr = tProfile.categories || tProfile.subjects || '';
+          setSkills(subjectsStr ? subjectsStr.split(',').map(s => s.trim()).filter(Boolean) : []);
+          const languagesStr = tProfile.tags || tProfile.languages || '';
+          setTags(languagesStr ? languagesStr.split(',').map(t => t.trim()).filter(Boolean) : []);
           setHourlyRate(Number(tProfile.hourly_rate));
           setExperienceLevel(tProfile.experience_level || 'intermediate');
           setProfileStatus(tProfile.status || 'pending');
+          setRejectionReason(tProfile.rejection_reason || '');
+          if (tProfile.session_duration) {
+            const sd = tProfile.session_duration;
+            setSessionDuration(sd === '30' ? 30 : sd === '60' ? 60 : 'both');
+          }
         }
-      } catch (err) {
+        try {
+          const avail = await getMyAvailability(token);
+          if (avail.grid) setAvailability(avail.grid);
+          if (avail.timezone) setTeacherTimezone(avail.timezone);
+          if (avail.session_duration) {
+            const sd = avail.session_duration;
+            setSessionDuration(sd === '30' ? 30 : sd === '60' ? 60 : 'both');
+          }
+        } catch {
+          // Teacher may not have availability yet
+        }
+      } catch {
         setHasTeacherProfile(false);
       }
     })();
@@ -72,22 +90,50 @@ export function TeacherSettings() {
     const token = localStorage.getItem('muallim_access_token');
     if (!token) return;
 
+    if (activeTab === 'availability') {
+      if (!hasTeacherProfile) {
+        setSaveError('Create your teacher profile first before saving availability');
+        return;
+      }
+      try {
+        setSaveError('');
+        const sd = sessionDuration === 30 ? '30' : sessionDuration === 60 ? '60' : 'both';
+        await updateMyAvailability(token, {
+          grid: availability as any,
+          session_duration: sd as '30' | '60' | 'both',
+        });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch (err: any) {
+        setSaveError(err.message || 'Failed to save availability');
+      }
+      return;
+    }
+
     const payload = {
       bio: form.bio,
+      headline: form.headline || 'Tutor',
       qualifications: form.headline || 'Tutor',
       hourly_rate: hourlyRate,
       experience_level: experienceLevel,
+      categories: skills.join(', '),
       subjects: skills.join(', '),
+      tags: tags.join(', '),
       languages: tags.join(', '),
     };
 
     try {
       setSaveError('');
+      let updatedProfile;
       if (hasTeacherProfile) {
-        await updateTeacherProfile(token, payload);
+        updatedProfile = await updateTeacherProfile(token, payload);
       } else {
-        await createTeacherProfile(token, payload);
+        updatedProfile = await createTeacherProfile(token, payload);
         setHasTeacherProfile(true);
+      }
+      if (updatedProfile) {
+        setProfileStatus(updatedProfile.status || 'pending');
+        setRejectionReason(updatedProfile.rejection_reason || '');
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -120,8 +166,15 @@ export function TeacherSettings() {
                   <AlertCircle className="w-4 h-4" /> Pending Admin Review
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-red-400 text-xs">
-                  <AlertCircle className="w-4 h-4" /> Profile Rejected — review feedback and resubmit
+                <div className="flex flex-col gap-1 text-red-400 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4" /> Profile Rejected — review feedback and resubmit
+                  </div>
+                  {rejectionReason && (
+                    <div className="pl-5 text-red-300 italic">
+                      Feedback: "{rejectionReason}"
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -267,9 +320,14 @@ export function TeacherSettings() {
                   {saveError}
                 </div>
               )}
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
+                {profileStatus === 'rejected' && (
+                  <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-4 py-2.5 rounded-xl border border-red-200">
+                    <AlertCircle className="w-4 h-4" /> Make your changes and click Resubmit
+                  </div>
+                )}
                 <button onClick={handleSave} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`} style={{ fontWeight: 600 }}>
-                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> Save Profile</>}
+                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> {profileStatus === 'rejected' ? 'Resubmit for Review' : 'Save Profile'}</>}
                 </button>
               </div>
             </div>
@@ -300,7 +358,7 @@ export function TeacherSettings() {
                 <table className="w-full min-w-[600px]">
                   <thead className="bg-[#F8F6F1]">
                     <tr>
-                      <th className="w-20 px-4 py-3 text-left text-xs text-[#9CA3AF]">Time (GST)</th>
+                      <th className="w-20 px-4 py-3 text-left text-xs text-[#9CA3AF]">Time ({getTimezoneAbbr(teacherTimezone)})</th>
                       {DAYS.map(d => (
                         <th key={d} className="px-2 py-3 text-center text-xs text-[#0D1B2A]" style={{ fontWeight: 600 }}>{d}</th>
                       ))}
@@ -333,6 +391,11 @@ export function TeacherSettings() {
                 </table>
               </div>
 
+              {saveError && activeTab === 'availability' && (
+                <div className="px-6 py-3 text-red-600 bg-red-50 border-t border-red-200 text-sm">
+                  {saveError}
+                </div>
+              )}
               <div className="px-6 py-4 bg-[#F8F6F1] border-t border-[rgba(13,27,42,0.06)] flex items-center justify-between">
                 <div className="flex items-center gap-4 text-xs text-[#9CA3AF]">
                   <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-[#C8962A]" /> Available</div>

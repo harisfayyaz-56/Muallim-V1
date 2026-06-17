@@ -1,30 +1,101 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
-import { Star, MapPin, Clock, MessageSquare, CheckCircle, Globe, Calendar, ChevronLeft, Share2, Heart } from 'lucide-react';
+import { Star, MapPin, Clock, MessageSquare, CheckCircle, Globe, Calendar, ChevronLeft, Share2, Heart, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { TEACHERS, REVIEWS, AVAILABILITY, PLATFORM_FEE_PERCENT } from '../data/mockData';
+import { REVIEWS, PLATFORM_FEE_PERCENT } from '../data/mockData';
+import { getTeacher, getProfile } from '../../api/profile';
+import { getTeacherAvailability } from '../../api/availability';
+import { mapProfileToTeacher } from '../utils/mappers';
+import { DAYS_FULL, DAY_LABELS } from '../utils/availability';
+import { getTimezoneAbbr, DEFAULT_TIMEZONE } from '../../utils/preferences';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const DAY_LABELS: Record<string, string> = {
-  monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu',
-  friday: 'Fri', saturday: 'Sat', sunday: 'Sun',
-};
+const DAYS = DAYS_FULL;
 
 export function TeacherProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const teacher = TEACHERS.find(t => t.id === id) || TEACHERS[0];
+  const [teacher, setTeacher] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedDay, setSelectedDay] = useState('monday');
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [duration, setDuration] = useState(60);
   const [liked, setLiked] = useState(false);
   const [activeTab, setActiveTab] = useState<'about' | 'reviews' | 'availability'>('about');
+  const [slotsByDay, setSlotsByDay] = useState<Record<string, string[]>>({});
+  const [viewerTimezone, setViewerTimezone] = useState(DEFAULT_TIMEZONE);
+  const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
+
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      try {
+        const data = await getTeacher(id);
+        setTeacher(mapProfileToTeacher(data));
+      } catch (err) {
+        console.error('Error fetching teacher profile:', err);
+        setError('Failed to load teacher profile');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      let tz = DEFAULT_TIMEZONE;
+      const token = localStorage.getItem('muallim_access_token');
+      if (token) {
+        try {
+          const profile = await getProfile(token);
+          if (profile.timezone) tz = profile.timezone;
+        } catch { /* use default */ }
+      }
+      setViewerTimezone(tz);
+      try {
+        const avail = await getTeacherAvailability(id, tz);
+        setTeacherTimezone(avail.timezone);
+        setSlotsByDay(avail.slots_by_day_viewer || avail.slots_by_day || {});
+      } catch {
+        setSlotsByDay({});
+      }
+    })();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar isLoggedIn />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] pt-32 text-[#C8962A]">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <p className="text-sm text-[#9CA3AF] mt-2">Loading teacher profile...</p>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (error || !teacher) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar isLoggedIn />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] pt-32 text-red-500">
+          <p className="text-lg font-semibold">{error || 'Teacher profile not found'}</p>
+          <Link to="/search" className="mt-4 px-4 py-2 bg-[#0D1B2A] text-white rounded-lg text-sm">
+            Back to Search
+          </Link>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   const sessionPrice = teacher.hourlyRate * (duration / 60);
   const platformFee = Math.round(sessionPrice * (PLATFORM_FEE_PERCENT / 100));
   const total = sessionPrice + platformFee;
 
-  const availableSlots = (AVAILABILITY as Record<string, string[]>)[selectedDay] || [];
+  const availableSlots = slotsByDay[selectedDay] || [];
 
   return (
     <div className="min-h-screen bg-white">
@@ -243,12 +314,17 @@ export function TeacherProfilePage() {
                 <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.2rem', color: '#0D1B2A' }} className="mb-2">
                   Weekly Schedule
                 </h3>
-                <p className="text-[#9CA3AF] text-sm mb-6">All times shown in Dubai time (GST, UTC+4)</p>
+                <p className="text-[#9CA3AF] text-sm mb-6">
+                  Times shown in your timezone ({getTimezoneAbbr(viewerTimezone)})
+                  {viewerTimezone !== teacherTimezone && (
+                    <span> · Teacher is in {getTimezoneAbbr(teacherTimezone)}</span>
+                  )}
+                </p>
 
                 {/* Day Selector */}
                 <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
                   {DAYS.map(day => {
-                    const slots = (AVAILABILITY as Record<string, string[]>)[day] || [];
+                    const slots = slotsByDay[day] || [];
                     return (
                       <button
                         key={day}

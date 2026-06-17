@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import React from 'react';
-import { Link } from 'react-router';
-import { CheckCircle, XCircle, Clock, Users, BookOpen, DollarSign, AlertTriangle, Eye } from 'lucide-react';
-import { ADMIN_TEACHER_APPLICATIONS, TEACHERS } from '../data/mockData';
+import { Link, useNavigate } from 'react-router';
+import { CheckCircle, XCircle, Clock, Users, BookOpen, DollarSign, AlertTriangle, Eye, Loader2, AlertCircle } from 'lucide-react';
+import { getTeacherApplications, approveTeacher, rejectTeacher } from '../../api/profile';
+import { getProfile } from '../../api/profile';
 
 type AppStatus = 'pending' | 'approved' | 'rejected';
 
@@ -22,24 +23,104 @@ interface Application {
 }
 
 export function AdminPanel() {
-  const [applications, setApplications] = useState<Application[]>(ADMIN_TEACHER_APPLICATIONS as Application[]);
+  const navigate = useNavigate();
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [filter, setFilter] = useState<AppStatus | 'all'>('all');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState<string | null>(null);
 
+  useEffect(() => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) {
+      setAuthError('You must be logged in to access the admin panel');
+      setLoading(false);
+      return;
+    }
+    
+    // Check if user is admin by trying to fetch applications
+    (async () => {
+      try {
+        const userProfile = await getProfile(token);
+        // Check if we can access admin endpoints (will throw error if not admin)
+        const data = await getTeacherApplications(token);
+        setIsAdmin(true);
+        setApplications(data);
+      } catch (err: any) {
+        if (err.message.includes('Permission denied') || err.message.includes('403')) {
+          setAuthError('You do not have admin permissions');
+        } else {
+          setAuthError('Error verifying admin access');
+        }
+        console.error('Admin access check failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (!isAdmin && loading) {
+    return (
+      <div className="min-h-screen bg-[#F8F6F1] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-[#C8962A] mx-auto mb-4" />
+          <p className="text-[#9CA3AF]">Verifying admin access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-[#F8F6F1] flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.5rem', color: '#0D1B2A' }}>
+            Access Denied
+          </h1>
+          <p className="text-[#6B7280] mt-2 mb-6">{authError}</p>
+          <Link
+            to="/"
+            className="inline-block px-6 py-2 bg-[#C8962A] text-white rounded-lg hover:bg-[#B07F1F] transition"
+          >
+            Go to Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const filtered = filter === 'all' ? applications : applications.filter(a => a.status === filter);
 
-  const approve = (id: string) => {
-    setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as AppStatus } : a));
-    if (selectedApp?.id === id) setSelectedApp(prev => prev ? { ...prev, status: 'approved' } : null);
+  const approve = async (id: string) => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    try {
+      await approveTeacher(token, id);
+      setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as AppStatus } : a));
+      if (selectedApp?.id === id) setSelectedApp(prev => prev ? { ...prev, status: 'approved' } : null);
+    } catch (err) {
+      console.error('Failed to approve teacher:', err);
+    }
   };
 
-  const reject = (id: string, reason: string) => {
-    setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' as AppStatus, rejectionReason: reason } : a));
-    if (selectedApp?.id === id) setSelectedApp(prev => prev ? { ...prev, status: 'rejected', rejectionReason: reason } : null);
-    setShowRejectDialog(null);
-    setRejectionReason('');
+  const reject = async (id: string, reason: string) => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    try {
+      await rejectTeacher(token, id, reason);
+      setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' as AppStatus, rejectionReason: reason } : a));
+      if (selectedApp?.id === id) setSelectedApp(prev => prev ? { ...prev, status: 'rejected', rejectionReason: reason } : null);
+      setShowRejectDialog(null);
+      setRejectionReason('');
+    } catch (err) {
+      console.error('Failed to reject teacher:', err);
+    }
   };
 
   const counts = {
@@ -72,17 +153,23 @@ export function AdminPanel() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.75rem', color: '#0D1B2A' }}>
-            Admin Dashboard
-          </h1>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-[#C8962A]">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <p className="text-sm text-[#9CA3AF] mt-2">Loading applications...</p>
         </div>
+      ) : (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8">
+            <h1 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.75rem', color: '#0D1B2A' }}>
+              Admin Dashboard
+            </h1>
+          </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { icon: Users, label: 'Total Teachers', value: TEACHERS.length, color: '#0D1B2A' },
+            { icon: Users, label: 'Total Applicants', value: applications.length, color: '#0D1B2A' },
             { icon: Clock, label: 'Pending Review', value: counts.pending, color: '#C8962A' },
             { icon: CheckCircle, label: 'Approved', value: counts.approved, color: '#059669' },
             { icon: DollarSign, label: 'Platform Revenue', value: 'AED 12,400', color: '#0D1B2A' },
@@ -238,6 +325,7 @@ export function AdminPanel() {
           </div>
         </div>
       </div>
+    )}
 
       {/* Reject Dialog */}
       {showRejectDialog && (
