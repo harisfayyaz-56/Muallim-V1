@@ -136,3 +136,52 @@ export const uploadAvatar = async (
 
   return response.json();
 };
+
+/**
+ * Set password for user (for Google sign-in users)
+ */
+export const setPassword = async (
+  token: string,
+  newPassword: string
+): Promise<{ detail: string }> => {
+  const response = await fetch(`${API_BASE}/profile/set-password/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to set password');
+  }
+
+  return response.json();
+};
+
+/**
+ * Change password for user
+ */
+export const changePassword = async (
+  token: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ detail: string }> => {
+  const response = await fetch(`${API_BASE}/profile/change-password/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to change password');
+  }
+
+  return response.json();
+};

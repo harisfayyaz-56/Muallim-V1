@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Button } from '../ui/button';
+import { Button } from './ui/button';
 import { AlertCircle, Upload } from 'lucide-react';
 
 interface AvatarUploaderProps {
@@ -92,7 +92,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
     setSuccess(null);
 
     try {
-      const token = localStorage.getItem('authToken');
+      const token = localStorage.getItem('muallim_access_token');
       if (!token) {
         throw new Error('Authentication token not found');
       }
@@ -100,7 +100,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
       const formData = new FormData();
       formData.append('profile_picture', file);
 
-      const response = await fetch('/api/profile/avatar/', {
+      const response = await fetch('http://localhost:8000/api/profile/avatar/', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

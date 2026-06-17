@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import * as authAPI from '../api/auth';
+import * as authAPI from '../../api/auth';
 
 interface AuthContextType {
   accessToken: string | null;
