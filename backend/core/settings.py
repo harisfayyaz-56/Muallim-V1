@@ -55,27 +55,29 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# Database configuration - PostgreSQL required
+# Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL must be set in .env. "
-        "Example: postgresql://user:password@localhost:5432/dbname"
-    )
-
-DATABASES = {
-    'default': dj_database_url.config(
-        default=DATABASE_URL,
-        conn_max_age=600,
-        ssl_require=False,  # Set to True for production
-    )
-}
-
-# PostgreSQL connection options
-if DATABASES['default']:
-    DATABASES['default']['OPTIONS'] = {
-        'connect_timeout': 10,
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=False,  # Set to True for production
+        )
+    }
+    # PostgreSQL connection options
+    if DATABASES['default']:
+        DATABASES['default']['OPTIONS'] = {
+            'connect_timeout': 10,
+        }
+else:
+    # Fallback to SQLite for local development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
 
 AUTH_PASSWORD_VALIDATORS = [
