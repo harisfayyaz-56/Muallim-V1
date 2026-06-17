@@ -185,3 +185,86 @@ export const changePassword = async (
 
   return response.json();
 };
+
+export interface TeacherProfile {
+  id: number;
+  bio?: string;
+  qualifications: string;
+  hourly_rate: number;
+  experience_level: string;
+  subjects: string;
+  languages: string;
+  is_verified: boolean;
+  status: 'pending' | 'approved' | 'rejected';
+  rating: number;
+  total_reviews: number;
+  students_count: number;
+  lessons_completed: number;
+}
+
+/**
+ * Get current user's teacher profile
+ */
+export const getTeacherProfile = async (token: string): Promise<TeacherProfile> => {
+  const response = await fetch(`${API_BASE}/teacher/me/`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch teacher profile');
+  }
+
+  return response.json();
+};
+
+/**
+ * Create teacher profile (Onboarding)
+ */
+export const createTeacherProfile = async (
+  token: string,
+  data: Partial<TeacherProfile>
+): Promise<TeacherProfile> => {
+  const response = await fetch(`${API_BASE}/teacher/me/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create teacher profile');
+  }
+
+  return response.json();
+};
+
+/**
+ * Update teacher profile
+ */
+export const updateTeacherProfile = async (
+  token: string,
+  data: Partial<TeacherProfile>
+): Promise<TeacherProfile> => {
+  const response = await fetch(`${API_BASE}/teacher/me/`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update teacher profile');
+  }
+
+  return response.json();
+};
