@@ -1,10 +1,28 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { BookOpen, ArrowRight, ArrowLeft, Mail } from 'lucide-react';
+import { BookOpen, ArrowLeft, Mail } from 'lucide-react';
+import * as authAPI from '../../api/auth';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await authAPI.passwordResetRequest({ email });
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset link');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F6F1] flex items-center justify-center px-4 py-12">
@@ -29,11 +47,13 @@ export function ForgotPasswordPage() {
                   Reset your password
                 </h1>
                 <p className="text-[#6B7280] mt-2 text-sm leading-relaxed">
-                  Enter the email address associated with your account and we'll send you a link to reset your password.
+                  Enter your email and we'll send you a link to reset your password.
                 </p>
               </div>
 
-              <form onSubmit={e => { e.preventDefault(); setSubmitted(true); }} className="space-y-4">
+              {error && <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm">{error}</div>}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>
                     Email address
@@ -43,16 +63,18 @@ export function ForgotPasswordPage() {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="you@example.com"
+                    disabled={loading}
                     required
-                    className="w-full px-4 py-3 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all"
+                    className="w-full px-4 py-3 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all disabled:opacity-50"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full flex items-center justify-center gap-2 bg-[#0D1B2A] hover:bg-[#1a2d45] text-white px-4 py-3 rounded-xl transition-colors duration-150"
+                  disabled={loading}
+                  className="w-full bg-[#C8962A] hover:bg-[#B07F1F] text-white px-4 py-3 rounded-xl transition-colors duration-150 font-semibold disabled:opacity-50"
                 >
-                  Send Reset Link <ArrowRight className="w-4 h-4" />
+                  {loading ? 'Sending...' : 'Send Reset Link'}
                 </button>
               </form>
             </>
