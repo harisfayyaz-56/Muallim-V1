@@ -190,16 +190,25 @@ export interface TeacherProfile {
   id: number;
   bio?: string;
   qualifications: string;
+  headline?: string;
   hourly_rate: number;
   experience_level: string;
   subjects: string;
+  categories?: string;
   languages: string;
+  tags?: string;
   is_verified: boolean;
   status: 'pending' | 'approved' | 'rejected';
+  rejection_reason?: string;
   rating: number;
   total_reviews: number;
   students_count: number;
   lessons_completed: number;
+  name?: string;
+  email?: string;
+  avatar?: string;
+  location?: string;
+  session_duration?: '30' | '60' | 'both';
 }
 
 /**
@@ -264,6 +273,104 @@ export const updateTeacherProfile = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to update teacher profile');
+  }
+
+  return response.json();
+};
+
+/**
+ * Get public list of approved teachers
+ */
+export const getTeachers = async (): Promise<TeacherProfile[]> => {
+  const response = await fetch(`${API_BASE}/teacher/`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch teachers');
+  }
+
+  return response.json();
+};
+
+/**
+ * Get a specific teacher's profile
+ */
+export const getTeacher = async (id: string): Promise<TeacherProfile> => {
+  const response = await fetch(`${API_BASE}/teacher/${id}/`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch teacher');
+  }
+
+  return response.json();
+};
+
+/**
+ * Admin: Get all teacher applications
+ */
+export const getTeacherApplications = async (token: string): Promise<any[]> => {
+  const response = await fetch(`${API_BASE}/teacher/applications/`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch teacher applications');
+  }
+
+  return response.json();
+};
+
+/**
+ * Admin: Approve teacher
+ */
+export const approveTeacher = async (token: string, teacherId: string): Promise<any> => {
+  const response = await fetch(`${API_BASE}/teacher/${teacherId}/approve/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to approve teacher');
+  }
+
+  return response.json();
+};
+
+/**
+ * Admin: Reject teacher
+ */
+export const rejectTeacher = async (
+  token: string,
+  teacherId: string,
+  reason: string
+): Promise<any> => {
+  const response = await fetch(`${API_BASE}/teacher/${teacherId}/reject/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to reject teacher');
   }
 
   return response.json();

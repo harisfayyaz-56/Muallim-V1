@@ -89,3 +89,16 @@ export const getTimezoneAbbr = (timezone: string): string => {
   };
   return abbrs[timezone] || 'UTC';
 };
+
+/**
+ * Format a time slot label in a given timezone (HH:MM)
+ */
+export const formatSlotTime = (utcIso: string, timezone: string = DEFAULT_TIMEZONE): string => {
+  const date = new Date(utcIso);
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+};
