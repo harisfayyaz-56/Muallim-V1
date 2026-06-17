@@ -5,7 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { AvatarUploader } from '../components/AvatarUploader';
 import { AvatarDisplay } from '../components/AvatarDisplay';
-import { getProfile } from '../../api/profile';
+import { getProfile, changePassword, setPassword, updateProfile } from '../../api/profile';
 
 const TIMEZONES = [
   'Asia/Dubai',
@@ -28,33 +28,44 @@ const NAV_ITEMS = [
 export function ProfileSettings() {
   const [activeSection, setActiveSection] = useState('profile');
   const [teacherMode, setTeacherMode] = useState(true);
+  const [hasPassword, setHasPassword] = useState(true);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
   const [form, setForm] = useState({
-    firstName: 'Omar',
-    lastName: 'Hassan',
-    email: 'omar.hassan@example.com',
-    bio: 'Passionate learner based in Dubai, UAE. Currently studying Mathematics and improving my Python skills.',
-    location: 'Dubai, UAE',
+    firstName: '',
+    lastName: '',
+    email: '',
+    bio: '',
+    location: '',
     timezone: 'Asia/Dubai',
   });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [avatarPreview, setAvatarPreview] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=200&h=200&fit=crop&auto=format');
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('muallim_access_token');
     if (!token) return;
     (async () => {
       try {
         const profile = await getProfile(token);
         if (profile) {
-          setForm((f) => ({
-            ...f,
-            firstName: profile.first_name || f.firstName,
-            lastName: profile.last_name || f.lastName,
-            email: profile.email || f.email,
-            bio: profile.bio || f.bio,
-            location: profile.location || f.location,
-            timezone: profile.timezone || f.timezone,
-          }));
+          setForm({
+            firstName: profile.first_name || '',
+            lastName: profile.last_name || '',
+            email: profile.email || '',
+            bio: profile.bio || '',
+            location: profile.location || '',
+            timezone: profile.timezone || 'Asia/Dubai',
+          });
+          // Check if user has password (from profile response)
+          const has_password = (profile as any).has_password !== false;
+          setHasPassword(has_password);
           // profile_picture may be absolute URL depending on backend
           const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
           if (pic) setAvatarPreview(pic);
@@ -65,9 +76,25 @@ export function ProfileSettings() {
     })();
   }, []);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    try {
+      const token = localStorage.getItem('muallim_access_token');
+      if (!token) throw new Error('Not authenticated');
+
+      setSaveError('');
+      await updateProfile(token, {
+        first_name: form.firstName,
+        last_name: form.lastName,
+        bio: form.bio,
+        location: form.location,
+        timezone: form.timezone,
+      });
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to save profile changes');
+    }
   };
 
   return (
@@ -214,6 +241,12 @@ export function ProfileSettings() {
                       </select>
                       <p className="text-xs text-[#9CA3AF] mt-1">Session times will be displayed in this timezone</p>
                     </div>
+
+                    {saveError && (
+                      <div className="p-3 text-red-600 bg-red-50 border border-red-200 rounded-xl text-sm">
+                        {saveError}
+                      </div>
+                    )}
                   </div>
 
                   <div className="px-6 py-4 bg-[#F8F6F1] border-t border-[rgba(13,27,42,0.06)] flex items-center justify-between">
@@ -254,17 +287,91 @@ export function ProfileSettings() {
                 <div className="space-y-4">
                   <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] overflow-hidden">
                     <div className="px-6 py-5 border-b border-[rgba(13,27,42,0.06)]">
-                      <h2 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Change Password</h2>
+                      <h2 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>
+                        {hasPassword ? 'Change Password' : 'Set Password'}
+                      </h2>
                     </div>
                     <div className="p-6 space-y-4">
-                      {['Current Password', 'New Password', 'Confirm New Password'].map(label => (
-                        <div key={label}>
-                          <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>{label}</label>
-                          <input type="password" placeholder="••••••••" className="w-full px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all text-sm" />
+                      {passwordError && (
+                        <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm">{passwordError}</div>
+                      )}
+                      {passwordSuccess && (
+                        <div className="p-3 bg-green-100 border border-green-300 text-green-800 rounded-lg text-sm">{passwordSuccess}</div>
+                      )}
+
+                      {hasPassword && (
+                        <div>
+                          <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>Current Password</label>
+                          <input
+                            type="password"
+                            placeholder="••••••••"
+                            value={passwordForm.currentPassword}
+                            onChange={e => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
+                            className="w-full px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all text-sm"
+                          />
                         </div>
-                      ))}
-                      <button className="bg-[#0D1B2A] text-white px-5 py-2 rounded-xl text-sm hover:bg-[#1a2d45] transition-colors" style={{ fontWeight: 600 }}>
-                        Update Password
+                      )}
+
+                      <div>
+                        <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>
+                          {hasPassword ? 'New Password' : 'Password'}
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          value={passwordForm.newPassword}
+                          onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>Confirm Password</label>
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          value={passwordForm.confirmPassword}
+                          onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all text-sm"
+                        />
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          setPasswordError('');
+                          setPasswordSuccess('');
+                          if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+                            setPasswordError('Passwords do not match');
+                            return;
+                          }
+                          if (!passwordForm.newPassword) {
+                            setPasswordError('Please enter a password');
+                            return;
+                          }
+                          try {
+                            const token = localStorage.getItem('muallim_access_token');
+                            if (!token) throw new Error('Not authenticated');
+
+                            if (hasPassword) {
+                              if (!passwordForm.currentPassword) {
+                                setPasswordError('Please enter your current password');
+                                return;
+                              }
+                              await changePassword(token, passwordForm.currentPassword, passwordForm.newPassword);
+                            } else {
+                              await setPassword(token, passwordForm.newPassword);
+                            }
+                            setPasswordSuccess('Password updated successfully!');
+                            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                            setTimeout(() => setPasswordSuccess(''), 3000);
+                          } catch (err: any) {
+                            setPasswordError(err.message || 'Failed to update password');
+                          }
+                        }}
+                        className="bg-[#0D1B2A] text-white px-5 py-2 rounded-xl text-sm hover:bg-[#1a2d45] transition-colors"
+                        style={{ fontWeight: 600 }}
+                      >
+                        {hasPassword ? 'Update Password' : 'Set Password'}
                       </button>
                     </div>
                   </div>

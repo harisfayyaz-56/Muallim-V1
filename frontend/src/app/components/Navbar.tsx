@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
 import { Menu, X, BookOpen, Bell, ChevronDown, LogOut, Settings, User, LayoutDashboard, GraduationCap } from 'lucide-react';
+import { getProfile } from '../../api/profile';
 
 const NAV_LINKS = [
   { label: 'Find Teachers', href: '/search' },
@@ -11,9 +12,26 @@ const NAV_LINKS = [
 export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?: boolean; isTeacher?: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
   const location = useLocation();
 
+  useEffect(() => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token || !isLoggedIn) return;
+    (async () => {
+      try {
+        const data = await getProfile(token);
+        setProfile(data);
+      } catch (err) {
+        console.error('Navbar failed to load profile:', err);
+      }
+    })();
+  }, [isLoggedIn]);
+
   const isActive = (href: string) => location.pathname === href;
+
+  const displayName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username : 'User';
+  const avatarUrl = profile?.profile_picture || profile?.profile_picture_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format';
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-[rgba(13,27,42,0.08)]">
@@ -60,11 +78,11 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
                     className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#F8F6F1] transition-colors"
                   >
                     <img
-                      src="https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+                      src={avatarUrl}
                       alt="Profile"
                       className="w-7 h-7 rounded-full object-cover"
                     />
-                    <span className="text-sm text-[#0D1B2A]">Omar Hassan</span>
+                    <span className="text-sm text-[#0D1B2A]">{displayName}</span>
                     <ChevronDown className="w-4 h-4 text-[#6B7280]" />
                   </button>
                   {profileOpen && (
