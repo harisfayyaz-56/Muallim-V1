@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router';
-import { Calendar, Clock, ChevronLeft, ChevronRight, CreditCard, Shield, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, ChevronLeft, ChevronRight, CreditCard, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { TEACHERS, AVAILABILITY, PLATFORM_FEE_PERCENT } from '../data/mockData';
+import { PLATFORM_FEE_PERCENT } from '../data/mockData';
+import { getTeacher, getProfile } from '../../api/profile';
+import { getTeacherAvailability, getTeacherSlotsForDate, createBooking } from '../../api/availability';
+import { mapProfileToTeacher } from '../utils/mappers';
+import { getTimezoneAbbr, DEFAULT_TIMEZONE } from '../../utils/preferences';
+import type { BookableSlot } from '../../api/availability';
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SLOT_DAY_MAP: Record<number, string> = { 0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday', 4: 'thursday', 5: 'friday', 6: 'saturday' };
@@ -21,16 +26,89 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 
 export function BookingPage() {
   const { teacherId } = useParams<{ teacherId: string }>();
-  const teacher = TEACHERS.find(t => t.id === teacherId) || TEACHERS[0];
+  const [teacher, setTeacher] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<BookableSlot | null>(null);
   const [duration, setDuration] = useState(60);
   const [step, setStep] = useState<'select' | 'confirm' | 'success'>('select');
   const [subject, setSubject] = useState('');
+  const [weeklySlots, setWeeklySlots] = useState<Record<string, string[]>>({});
+  const [dateSlots, setDateSlots] = useState<BookableSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [viewerTimezone, setViewerTimezone] = useState(DEFAULT_TIMEZONE);
+  const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
+  const [bookingError, setBookingError] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [sessionDurations, setSessionDurations] = useState<('30' | '60')[]>(['30', '60']);
+
+  useEffect(() => {
+    if (!teacherId) return;
+    (async () => {
+      try {
+        const data = await getTeacher(teacherId);
+        setTeacher(mapProfileToTeacher(data));
+        const sd = data.session_duration || 'both';
+        let durations: ('30' | '60')[] = ['30', '60'];
+        if (sd === '30') durations = ['30'];
+        else if (sd === '60') durations = ['60'];
+        setSessionDurations(durations);
+        setDuration(durations.includes('60') ? 60 : 30);
+      } catch (err) {
+        console.error('Error fetching teacher profile for booking:', err);
+        setError('Failed to load teacher details');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [teacherId]);
+
+  useEffect(() => {
+    if (!teacherId) return;
+    (async () => {
+      let tz = DEFAULT_TIMEZONE;
+      const token = localStorage.getItem('muallim_access_token');
+      if (token) {
+        try {
+          const profile = await getProfile(token);
+          if (profile.timezone) tz = profile.timezone;
+        } catch { /* default */ }
+      }
+      setViewerTimezone(tz);
+      try {
+        const avail = await getTeacherAvailability(teacherId, tz);
+        setTeacherTimezone(avail.timezone);
+        setWeeklySlots(avail.slots_by_day_viewer || avail.slots_by_day || {});
+      } catch {
+        setWeeklySlots({});
+      }
+    })();
+  }, [teacherId]);
+
+  useEffect(() => {
+    if (!teacherId || !selectedDay) {
+      setDateSlots([]);
+      return;
+    }
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+    setSlotsLoading(true);
+    setSelectedSlot(null);
+    (async () => {
+      try {
+        const res = await getTeacherSlotsForDate(teacherId, dateStr, duration, viewerTimezone);
+        setDateSlots(res.slots.filter(s => s.available));
+      } catch {
+        setDateSlots([]);
+      } finally {
+        setSlotsLoading(false);
+      }
+    })();
+  }, [teacherId, selectedDay, year, month, duration, viewerTimezone]);
 
   const calendarDays = generateCalendar(year, month);
 
@@ -40,8 +118,57 @@ export function BookingPage() {
   const getAvailableSlots = (day: number) => {
     const d = new Date(year, month, day).getDay();
     const dayKey = SLOT_DAY_MAP[d];
-    return (AVAILABILITY as Record<string, string[]>)[dayKey] || [];
+    return weeklySlots[dayKey] || [];
   };
+
+  const handlePayment = async () => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token || !teacher || !selectedSlot) return;
+    setPaying(true);
+    setBookingError('');
+    try {
+      await createBooking(token, {
+        teacher_id: Number(teacher.id),
+        subject: subject || teacher.skills[0] || 'Session',
+        scheduled_date: selectedSlot.utc,
+        duration_minutes: duration,
+        amount: String(total),
+      });
+      setStep('success');
+    } catch (err: any) {
+      setBookingError(err.message || 'Booking failed. The slot may have been taken.');
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8F6F1]">
+        <Navbar isLoggedIn />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] pt-32 text-[#C8962A]">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <p className="text-sm text-[#9CA3AF] mt-2">Loading booking details...</p>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (error || !teacher) {
+    return (
+      <div className="min-h-screen bg-[#F8F6F1]">
+        <Navbar isLoggedIn />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] pt-32 text-red-500">
+          <p className="text-lg font-semibold">{error || 'Teacher not found'}</p>
+          <Link to="/search" className="mt-4 px-4 py-2 bg-[#0D1B2A] text-white rounded-lg text-sm">
+            Back to Search
+          </Link>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   const sessionPrice = teacher.hourlyRate * (duration / 60);
   const platformFee = Math.round(sessionPrice * (PLATFORM_FEE_PERCENT / 100));
@@ -64,7 +191,7 @@ export function BookingPage() {
             <p className="text-[#6B7280] text-sm leading-relaxed mb-2">
               Your session with <strong className="text-[#0D1B2A]">{teacher.name}</strong> on{' '}
               <strong className="text-[#0D1B2A]">{selectedDate?.toLocaleDateString('en-AE', { weekday: 'long', day: 'numeric', month: 'long' })}</strong> at{' '}
-              <strong className="text-[#0D1B2A]">{selectedSlot}</strong> is confirmed.
+              <strong className="text-[#0D1B2A]">{selectedSlot?.time}</strong> ({getTimezoneAbbr(viewerTimezone)}) is confirmed.
             </p>
             <p className="text-[#9CA3AF] text-xs mb-8">
               A meeting link has been generated and sent to your email. Check your dashboard for details.
@@ -129,10 +256,10 @@ export function BookingPage() {
                 <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] p-5">
                   <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="mb-4">Session Duration</h3>
                   <div className="flex gap-3">
-                    {[30, 60, 90].map(d => (
+                    {sessionDurations.map(d => (
                       <button
                         key={d}
-                        onClick={() => setDuration(d)}
+                        onClick={() => { setDuration(d); setSelectedSlot(null); }}
                         className={`flex-1 py-3 rounded-xl text-sm border transition-all ${duration === d ? 'bg-[#0D1B2A] border-[#0D1B2A] text-white' : 'border-[rgba(13,27,42,0.15)] text-[#6B7280] hover:border-[#0D1B2A]'}`}
                         style={{ fontWeight: duration === d ? 600 : 400 }}
                       >
@@ -140,6 +267,9 @@ export function BookingPage() {
                       </button>
                     ))}
                   </div>
+                  <p className="text-xs text-[#9CA3AF] mt-2">
+                    Times shown in your timezone ({getTimezoneAbbr(viewerTimezone)})
+                  </p>
                 </div>
 
                 {/* Calendar */}
@@ -202,22 +332,30 @@ export function BookingPage() {
                     <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="mb-4">
                       Available Times — {selectedDate?.toLocaleDateString('en-AE', { weekday: 'long', day: 'numeric', month: 'short' })}
                     </h3>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {getAvailableSlots(selectedDay).map(slot => (
-                        <button
-                          key={slot}
-                          onClick={() => setSelectedSlot(slot === selectedSlot ? null : slot)}
-                          className={`py-2.5 rounded-xl text-sm border transition-all ${
-                            selectedSlot === slot
-                              ? 'bg-[#C8962A] border-[#C8962A] text-white'
-                              : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
-                          }`}
-                          style={{ fontWeight: 500 }}
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
+                    {slotsLoading ? (
+                      <div className="flex items-center justify-center py-6 text-[#C8962A]">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      </div>
+                    ) : dateSlots.length === 0 ? (
+                      <p className="text-center text-[#9CA3AF] text-sm py-4">No available slots for this date</p>
+                    ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {dateSlots.map(slot => (
+                          <button
+                            key={slot.utc}
+                            onClick={() => setSelectedSlot(selectedSlot?.utc === slot.utc ? null : slot)}
+                            className={`py-2.5 rounded-xl text-sm border transition-all ${
+                              selectedSlot?.utc === slot.utc
+                                ? 'bg-[#C8962A] border-[#C8962A] text-white'
+                                : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
+                            }`}
+                            style={{ fontWeight: 500 }}
+                          >
+                            {slot.time}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -240,7 +378,7 @@ export function BookingPage() {
                       <div className="flex items-center gap-3">
                         <Clock className="w-4 h-4 text-[#9CA3AF]" />
                         <span className={selectedSlot ? 'text-[#0D1B2A]' : 'text-[#C9B99A]'}>
-                          {selectedSlot ? `${selectedSlot} · ${duration} min` : 'Select a time'}
+                          {selectedSlot ? `${selectedSlot.time} · ${duration} min (${getTimezoneAbbr(viewerTimezone)})` : 'Select a time'}
                         </span>
                       </div>
                     </div>
@@ -303,7 +441,7 @@ export function BookingPage() {
                     {[
                       { label: 'Teacher', value: teacher.name },
                       { label: 'Date', value: selectedDate?.toLocaleDateString('en-AE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) || '' },
-                      { label: 'Time', value: `${selectedSlot} GST (Dubai)` },
+                      { label: 'Time', value: `${selectedSlot?.time} (${getTimezoneAbbr(viewerTimezone)})` },
                       { label: 'Duration', value: `${duration} minutes` },
                       { label: 'Subject', value: subject || teacher.skills[0] },
                     ].map(row => (
@@ -344,16 +482,23 @@ export function BookingPage() {
                     </div>
                   </div>
 
+                  {bookingError && (
+                    <div className="p-3 text-red-600 bg-red-50 border border-red-200 rounded-xl text-sm">
+                      {bookingError}
+                    </div>
+                  )}
+
                   <div className="flex gap-3">
                     <button onClick={() => setStep('select')} className="flex-1 py-3 border border-[rgba(13,27,42,0.15)] text-[#6B7280] rounded-xl text-sm hover:bg-[#F8F6F1] transition-colors">
                       Back
                     </button>
                     <button
-                      onClick={() => setStep('success')}
-                      className="flex-1 py-3 bg-[#C8962A] hover:bg-[#b8851f] text-white rounded-xl text-sm transition-colors"
+                      onClick={handlePayment}
+                      disabled={paying}
+                      className="flex-1 py-3 bg-[#C8962A] hover:bg-[#b8851f] text-white rounded-xl text-sm transition-colors disabled:opacity-60"
                       style={{ fontWeight: 600 }}
                     >
-                      Pay AED {total}
+                      {paying ? 'Processing...' : `Pay AED ${total}`}
                     </button>
                   </div>
 

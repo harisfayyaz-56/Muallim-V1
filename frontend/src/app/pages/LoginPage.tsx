@@ -85,13 +85,13 @@ export function LoginPage() {
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>
-                Email address
+                Email or username
               </label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="you@example.com or harisfayyaz"
                 disabled={loading}
                 className="w-full px-4 py-3 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all disabled:opacity-50"
               />

@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
-import { Search, SlidersHorizontal, X, ChevronDown, Star } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronDown, Star, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { TeacherCard } from '../components/TeacherCard';
-import { TEACHERS, CATEGORIES } from '../data/mockData';
+import { CATEGORIES } from '../data/mockData';
+import { getTeachers } from '../../api/profile';
+import { mapProfileToTeacher } from '../utils/mappers';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Most Relevant' },
@@ -22,17 +24,32 @@ export function SearchPage() {
   const [sortBy, setSortBy] = useState('relevance');
   const [showFilters, setShowFilters] = useState(false);
   const [minRating, setMinRating] = useState(0);
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getTeachers();
+        setTeachers(data.map(mapProfileToTeacher));
+      } catch (err) {
+        console.error('Error fetching teachers:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
-    let results = [...TEACHERS];
+    let results = [...teachers];
 
     if (query) {
       const q = query.toLowerCase();
       results = results.filter(t =>
         t.name.toLowerCase().includes(q) ||
-        t.headline.toLowerCase().includes(q) ||
-        t.skills.some(s => s.toLowerCase().includes(q)) ||
-        t.tags.some(tag => tag.toLowerCase().includes(q))
+        (t.headline || '').toLowerCase().includes(q) ||
+        t.skills.some((s: string) => s.toLowerCase().includes(q)) ||
+        t.tags.some((tag: string) => tag.toLowerCase().includes(q))
       );
     }
 
@@ -40,7 +57,7 @@ export function SearchPage() {
       const cat = CATEGORIES.find(c => c.id === selectedCategory);
       if (cat) {
         results = results.filter(t =>
-          t.skills.some(s => s.toLowerCase().includes(cat.label.toLowerCase().split(' ')[0].toLowerCase()))
+          t.skills.some((s: string) => s.toLowerCase().includes(cat.label.toLowerCase().split(' ')[0].toLowerCase()))
         );
       }
     }
@@ -61,7 +78,7 @@ export function SearchPage() {
     else if (sortBy === 'reviews') results.sort((a, b) => b.reviewsCount - a.reviewsCount);
 
     return results;
-  }, [query, selectedCategory, priceRange, sortBy, minRating]);
+  }, [query, selectedCategory, priceRange, sortBy, minRating, teachers]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +225,12 @@ export function SearchPage() {
               </div>
             </div>
 
-            {filtered.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-[#C8962A]">
+                <Loader2 className="w-8 h-8 animate-spin" />
+                <p className="text-sm text-[#9CA3AF] mt-2">Loading teachers...</p>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-16 h-16 bg-[#F8F6F1] rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Search className="w-8 h-8 text-[#9CA3AF]" />
