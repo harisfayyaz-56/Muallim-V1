@@ -38,8 +38,12 @@ export function RegisterPage() {
     }
 
     try {
-      await authAPI.register(form);
-      navigate('/verify-email?email=' + encodeURIComponent(form.email));
+      const response = await authAPI.register(form);
+      let targetPath = '/verify-email?email=' + encodeURIComponent(form.email);
+      if (response && response.verify_url) {
+        targetPath += '&fallback_url=' + encodeURIComponent(response.verify_url);
+      }
+      navigate(targetPath);
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {
