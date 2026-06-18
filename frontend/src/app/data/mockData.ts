@@ -103,4 +103,44 @@ export const REVIEWS: Review[] = [
 
 export const UPCOMING_SESSIONS: Session[] = [];
 export const PAST_SESSIONS: Session[] = [];
-export const CONVERSATIONS: Conversation[] = [];
+export const CONVERSATIONS: Conversation[] = [
+  {
+    id: 'conv-1',
+    participantId: '1',
+    participantName: 'Dr. Sarah Al-Sayed',
+    participantAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face',
+    participantRole: 'teacher',
+    lastMessage: 'Looking forward to our next class on Sunday!',
+    lastMessageTime: new Date(Date.now() - 3600000).toISOString(),
+    unreadCount: 1,
+    messages: [
+      {
+        id: 'm1',
+        senderId: 'teacher-1',
+        senderName: 'Dr. Sarah Al-Sayed',
+        senderAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face',
+        content: 'Hello! I prepared the notes for our Mathematics session.',
+        timestamp: new Date(Date.now() - 7200000).toISOString(),
+        isRead: true,
+      },
+      {
+        id: 'm2',
+        senderId: 'me',
+        senderName: 'You',
+        senderAvatar: '',
+        content: 'Thank you so much! I will review them tonight.',
+        timestamp: new Date(Date.now() - 5400000).toISOString(),
+        isRead: true,
+      },
+      {
+        id: 'm3',
+        senderId: 'teacher-1',
+        senderName: 'Dr. Sarah Al-Sayed',
+        senderAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face',
+        content: 'Looking forward to our next class on Sunday!',
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+        isRead: false,
+      }
+    ]
+  }
+];

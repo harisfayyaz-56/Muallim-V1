@@ -66,7 +66,7 @@ export const detectTimezone = (): string => {
   return 'Asia/Dubai';
 };
 
-export const DEFAULT_TIMEZONE = detectTimezone();
+export const DEFAULT_TIMEZONE = 'Asia/Dubai';
 
 /**
  * Format price in AED
