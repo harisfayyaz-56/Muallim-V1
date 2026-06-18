@@ -3,8 +3,9 @@ import { Link } from 'react-router';
 import { Calendar, MessageSquare, BookOpen, Clock, Star, ExternalLink, ArrowRight, TrendingUp } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { UPCOMING_SESSIONS, PAST_SESSIONS } from '../data/mockData';
 import { getProfile } from '../../api/profile';
+import { getMyBookings } from '../../api/availability';
+import { formatSlotTime, DEFAULT_TIMEZONE } from '../../utils/preferences';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -17,6 +18,12 @@ export function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState('');
+  const [userTimezone, setUserTimezone] = useState(DEFAULT_TIMEZONE);
+  const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
+  const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
+  const [hoursLearned, setHoursLearned] = useState(0);
+  const [subjectsCount, setSubjectsCount] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
@@ -28,13 +35,63 @@ export function StudentDashboard() {
         setUserName(name);
         const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
         if (pic) setUserAvatar(pic);
+        const tz = profile.timezone || DEFAULT_TIMEZONE;
+        setUserTimezone(tz);
+
+        const bookings = await getMyBookings(token);
+        const upcoming: any[] = [];
+        const past: any[] = [];
+        let completedCount = 0;
+        let learnedMinutes = 0;
+        const uniqueSubjects = new Set<string>();
+
+        const now = new Date();
+        bookings.forEach((b: any) => {
+          const sDate = new Date(b.scheduled_date);
+          const isUpcoming = sDate >= now;
+          const session = {
+            id: String(b.id),
+            teacherId: String(b.teacher_id_read || b.teacher_id),
+            teacherName: b.teacher_name,
+            teacherAvatar: b.teacher_avatar,
+            studentName: b.student_name,
+            studentAvatar: b.student_avatar,
+            subject: b.subject,
+            date: b.scheduled_date,
+            time: formatSlotTime(b.scheduled_date, tz),
+            duration: b.duration_minutes,
+            status: isUpcoming ? 'upcoming' : b.status,
+            totalPaid: Number(b.amount),
+            meetingLink: b.meeting_link,
+          };
+
+          if (isUpcoming && (b.status === 'confirmed' || b.status === 'pending')) {
+            upcoming.push(session);
+          } else {
+            if (b.status === 'confirmed' || b.status === 'completed') {
+              session.status = 'completed';
+              completedCount += 1;
+              learnedMinutes += b.duration_minutes;
+            } else {
+              session.status = 'cancelled';
+            }
+            past.push(session);
+          }
+          uniqueSubjects.add(b.subject);
+        });
+
+        setUpcomingSessions(upcoming);
+        setPastSessions(past);
+        setCompletedSessionsCount(completedCount);
+        setHoursLearned(Math.round(learnedMinutes / 60));
+        setSubjectsCount(uniqueSubjects.size);
       } catch (err) {
-        console.error('StudentDashboard: failed to load profile', err);
+        console.error('StudentDashboard: failed to load profile or bookings', err);
       }
     })();
   }, []);
 
-  const sessions = activeTab === 'upcoming' ? UPCOMING_SESSIONS : PAST_SESSIONS;
+  const sessions = activeTab === 'upcoming' ? upcomingSessions : pastSessions;
 
   return (
     <div className="min-h-screen bg-[#F8F6F1]">
@@ -71,10 +128,10 @@ export function StudentDashboard() {
           {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {[
-              { icon: BookOpen, label: 'Sessions Completed', value: '14', color: '#C8962A' },
-              { icon: Clock, label: 'Hours Learned', value: '18h', color: '#0D1B2A' },
+              { icon: BookOpen, label: 'Sessions Completed', value: String(completedSessionsCount), color: '#C8962A' },
+              { icon: Clock, label: 'Hours Learned', value: `${hoursLearned}h`, color: '#0D1B2A' },
               { icon: Star, label: 'Avg. Session Rating', value: '4.9', color: '#C8962A' },
-              { icon: TrendingUp, label: 'Subjects Studied', value: '4', color: '#0D1B2A' },
+              { icon: TrendingUp, label: 'Subjects Studied', value: String(subjectsCount), color: '#0D1B2A' },
             ].map(stat => (
               <div key={stat.label} className="bg-white rounded-2xl p-5 border border-[rgba(13,27,42,0.06)]">
                 <div className="flex items-center gap-3 mb-3">
@@ -143,7 +200,7 @@ export function StudentDashboard() {
                             <div className="flex items-center gap-4 mt-2 flex-wrap">
                               <span className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
                                 <Calendar className="w-3.5 h-3.5" />
-                                {new Date(session.date).toLocaleDateString('en-AE', { weekday: 'short', day: 'numeric', month: 'short' })} at {session.time}
+                                {new Date(session.date).toLocaleDateString('en-AE', { timeZone: userTimezone, weekday: 'short', day: 'numeric', month: 'short' })} at {session.time}
                               </span>
                               <span className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
                                 <Clock className="w-3.5 h-3.5" />
