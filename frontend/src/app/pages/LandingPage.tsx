@@ -4,7 +4,7 @@ import { Search, Star, ArrowRight, ChevronRight, Users, BookOpen, Award, Clock, 
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { TeacherCard } from '../components/TeacherCard';
-import { TEACHERS, CATEGORIES } from '../data/mockData';
+import { CATEGORIES } from '../data/mockData';
 
 export function LandingPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,7 +159,7 @@ export function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {TEACHERS.slice(0, 6).map(teacher => (
+            {[].slice(0, 6).map(teacher => (
               <TeacherCard key={teacher.id} teacher={teacher} />
             ))}
           </div>

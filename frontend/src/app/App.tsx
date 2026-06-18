@@ -25,7 +25,8 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={<LoginPage />} />
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/teacher/:id" element={<TeacherProfilePage />} />
             <Route path="/login" element={<LoginPage />} />
@@ -35,11 +36,12 @@ export default function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/dashboard" element={<StudentDashboard />} />
             <Route path="/teacher-dashboard" element={<TeacherDashboard />} />
+            <Route path="/admin-dashboard" element={<AdminPanel />} />
+            <Route path="/admin" element={<AdminPanel />} />
             <Route path="/settings" element={<ProfileSettings />} />
             <Route path="/settings/teacher" element={<TeacherSettings />} />
             <Route path="/book/:teacherId" element={<BookingPage />} />
             <Route path="/messages" element={<MessagesPage />} />
-            <Route path="/admin" element={<AdminPanel />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
