@@ -91,6 +91,28 @@ export function BookingPage() {
   }, [teacherId]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const preDay = params.get('day');
+    if (preDay && Object.keys(weeklySlots).length > 0) {
+      const today = new Date();
+      const targetDate = new Date();
+      const dayMap: Record<string, number> = {
+        sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6
+      };
+      const targetDayOfWeek = dayMap[preDay.toLowerCase()];
+      if (targetDayOfWeek !== undefined) {
+        const currentDayOfWeek = today.getDay();
+        let diff = targetDayOfWeek - currentDayOfWeek;
+        if (diff < 0) diff += 7;
+        targetDate.setDate(today.getDate() + diff);
+        setYear(targetDate.getFullYear());
+        setMonth(targetDate.getMonth());
+        setSelectedDay(targetDate.getDate());
+      }
+    }
+  }, [weeklySlots]);
+
+  useEffect(() => {
     if (!teacherId || !selectedDay) {
       setDateSlots([]);
       return;
@@ -101,7 +123,17 @@ export function BookingPage() {
     (async () => {
       try {
         const res = await getTeacherSlotsForDate(teacherId, dateStr, duration, viewerTimezone);
-        setDateSlots(res.slots.filter(s => s.available));
+        const slots = res.slots.filter(s => s.available);
+        setDateSlots(slots);
+        
+        const params = new URLSearchParams(window.location.search);
+        const preTime = params.get('time');
+        if (preTime) {
+          const matchingSlot = slots.find(s => s.time === preTime);
+          if (matchingSlot) {
+            setSelectedSlot(matchingSlot);
+          }
+        }
       } catch {
         setDateSlots([]);
       } finally {
@@ -256,16 +288,19 @@ export function BookingPage() {
                 <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] p-5">
                   <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="mb-4">Session Duration</h3>
                   <div className="flex gap-3">
-                    {sessionDurations.map(d => (
-                      <button
-                        key={d}
-                        onClick={() => { setDuration(d); setSelectedSlot(null); }}
-                        className={`flex-1 py-3 rounded-xl text-sm border transition-all ${duration === d ? 'bg-[#0D1B2A] border-[#0D1B2A] text-white' : 'border-[rgba(13,27,42,0.15)] text-[#6B7280] hover:border-[#0D1B2A]'}`}
-                        style={{ fontWeight: duration === d ? 600 : 400 }}
-                      >
-                        {d} min
-                      </button>
-                    ))}
+                    {sessionDurations.map(d => {
+                      const numDur = Number(d);
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => { setDuration(numDur); setSelectedSlot(null); }}
+                          className={`flex-1 py-3 rounded-xl text-sm border transition-all ${duration === numDur ? 'bg-[#0D1B2A] border-[#0D1B2A] text-white' : 'border-[rgba(13,27,42,0.15)] text-[#6B7280] hover:border-[#0D1B2A]'}`}
+                          style={{ fontWeight: duration === numDur ? 600 : 400 }}
+                        >
+                          {d} min
+                        </button>
+                      );
+                    })}
                   </div>
                   <p className="text-xs text-[#9CA3AF] mt-2">
                     Times shown in your timezone ({getTimezoneAbbr(viewerTimezone)})
