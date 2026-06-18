@@ -315,18 +315,39 @@ class PasswordResetRequestView(APIView):
 
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        reset_path = reverse('api-password-reset-confirm')
-        current_site = get_current_site(request)
-        reset_url = f"{request.scheme}://{current_site.domain}{reset_path}?uid={uid}&token={token}"
+        frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
+        reset_url = f"{frontend_domain}/reset-password?uid={uid}&token={token}"
 
-        send_mail(
-            subject='Password reset',
-            message=f'Reset your password here: {reset_url}',
-            from_email=None,
-            recipient_list=[email],
-            fail_silently=True,
-        )
-        return Response({'detail': 'If the email exists, a reset link will be sent.'}, status=status.HTTP_200_OK)
+        html_message = f"""
+        <html>
+            <body>
+                <h2>Reset your Muallim Password</h2>
+                <p>You requested a password reset. Click the link below to set a new password:</p>
+                <a href="{reset_url}" style="padding: 10px 20px; background-color: #C8962A; color: white; text-decoration: none; border-radius: 5px;">
+                    Reset Password
+                </a>
+                <p>Or copy this link: {reset_url}</p>
+                <p>If you did not request this, you can safely ignore this email.</p>
+                <p>Best regards,<br>Muallim Team</p>
+            </body>
+        </html>
+        """
+
+        # Try sending email using the configured backend
+        try:
+            send_mail(
+                subject='Reset your Muallim Password',
+                message=f'Reset your password here: {reset_url}',
+                from_email=None,
+                recipient_list=[email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+        except Exception as mail_err:
+            print(f"Error sending password reset email: {str(mail_err)}")
+
+        resp_data = {'detail': 'If the email exists, a reset link will be sent.'}
+        return Response(resp_data, status=status.HTTP_200_OK)
 
 
 class PasswordResetConfirmView(APIView):
