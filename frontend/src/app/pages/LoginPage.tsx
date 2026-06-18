@@ -1,33 +1,45 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Eye, EyeOff, BookOpen } from 'lucide-react';
+import { Eye, EyeOff, BookOpen, ShieldAlert, MailWarning } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
+import * as authAPI from '../../api/auth';
 
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [errorType, setErrorType] = useState<'suspended' | 'unverified' | 'generic'>('generic');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
+
+  const classifyError = (msg: string) => {
+    const lower = msg.toLowerCase();
+    if (lower.includes('suspend')) return 'suspended';
+    if (lower.includes('not verified') || lower.includes('verification')) return 'unverified';
+    return 'generic';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorType('generic');
     setLoading(true);
 
     try {
       const result = await login(email, password);
-      // Check if user is admin and redirect to admin dashboard
       if (result?.is_staff || result?.is_superuser) {
         navigate('/admin-dashboard');
       } else {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      const msg = err.message || 'Login failed';
+      setErrorType(classifyError(msg));
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -35,19 +47,39 @@ export function LoginPage() {
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     setError('');
+    setErrorType('generic');
     setLoading(true);
     try {
       const result = await googleLogin(credentialResponse.credential);
-      // Check if user is admin and redirect to admin dashboard
       if (result?.is_staff || result?.is_superuser) {
         navigate('/admin-dashboard');
       } else {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(err.message || 'Google sign-in failed');
+      const msg = err.message || 'Google sign-in failed';
+      setErrorType(classifyError(msg));
+      setError(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) return;
+    setResending(true);
+    try {
+      const result = await authAPI.resendVerification(email);
+      if (result.verify_url) {
+        navigate('/verify-email?email=' + encodeURIComponent(email) + '&fallback_url=' + encodeURIComponent(result.verify_url));
+      } else {
+        navigate('/verify-email?email=' + encodeURIComponent(email));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification email');
+      setErrorType('generic');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -71,7 +103,41 @@ export function LoginPage() {
             <p className="text-[#6B7280] mt-2">Sign in to continue your learning journey</p>
           </div>
 
-          {error && <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm">{error}</div>}
+          {error && errorType === 'suspended' && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-800 text-sm" style={{ fontWeight: 600 }}>Cannot login</p>
+                  <p className="text-red-600 text-sm mt-1">Your account has been suspended. Please contact the admin to unsuspend your account.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && errorType === 'unverified' && (
+            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <div className="flex items-start gap-3">
+                <MailWarning className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-amber-800 text-sm" style={{ fontWeight: 600 }}>Email not verified</p>
+                  <p className="text-amber-700 text-sm mt-1">Please verify your email address before logging in. Check your inbox for the verification link.</p>
+                  <button
+                    onClick={handleResendVerification}
+                    disabled={resending || !email}
+                    className="mt-2 text-sm text-[#C8962A] hover:underline disabled:opacity-50"
+                    style={{ fontWeight: 600 }}
+                  >
+                    {resending ? 'Resending...' : 'Resend verification email →'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && errorType === 'generic' && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm">{error}</div>
+          )}
 
           <div className="mb-6">
             <GoogleLogin
