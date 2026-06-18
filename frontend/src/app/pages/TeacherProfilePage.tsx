@@ -95,7 +95,39 @@ export function TeacherProfilePage() {
   const platformFee = Math.round(sessionPrice * (PLATFORM_FEE_PERCENT / 100));
   const total = sessionPrice + platformFee;
 
-  const availableSlots = slotsByDay[selectedDay] || [];
+  const getDisplaySlots = () => {
+    const rawSlots = slotsByDay[selectedDay] || [];
+    if (duration === 30) {
+      const expanded: string[] = [];
+      rawSlots.forEach(slot => {
+        const [h, m] = slot.split(':');
+        expanded.push(`${h}:${m}`);
+        if (m === '00') {
+          expanded.push(`${h}:30`);
+        } else if (m === '30') {
+          const nextHour = (parseInt(h) + 1) % 24;
+          const nextHourStr = String(nextHour).padStart(2, '0');
+          expanded.push(`${nextHourStr}:00`);
+        }
+      });
+      return Array.from(new Set(expanded)).sort();
+    } else if (duration === 90) {
+      const filtered: string[] = [];
+      rawSlots.forEach(slot => {
+        const [h, m] = slot.split(':');
+        const nextHour = (parseInt(h) + 1) % 24;
+        const nextHourStr = String(nextHour).padStart(2, '0');
+        const nextSlot = `${nextHourStr}:${m}`;
+        if (rawSlots.includes(nextSlot)) {
+          filtered.push(slot);
+        }
+      });
+      return filtered;
+    }
+    return rawSlots;
+  };
+
+  const availableSlots = getDisplaySlots();
 
   return (
     <div className="min-h-screen bg-white">
@@ -370,6 +402,17 @@ export function TeacherProfilePage() {
                     ))}
                   </div>
                 )}
+                {selectedSlot && (
+                  <div className="mt-6 flex justify-end">
+                    <Link
+                      to={`/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}`}
+                      className="w-full sm:w-auto text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-6 py-3 rounded-xl transition-colors duration-150"
+                      style={{ fontWeight: 600 }}
+                    >
+                      Book Selected Slot ({selectedSlot})
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -421,11 +464,11 @@ export function TeacherProfilePage() {
                 </div>
 
                 <Link
-                  to={`/book/${teacher.id}`}
+                  to={selectedSlot ? `/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}` : `/book/${teacher.id}`}
                   className="block w-full text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-4 py-3.5 rounded-xl transition-colors duration-150"
                   style={{ fontWeight: 600 }}
                 >
-                  Book a Session
+                  {selectedSlot ? `Book Selected Slot (${selectedSlot})` : 'Book a Session'}
                 </Link>
 
                 <Link
