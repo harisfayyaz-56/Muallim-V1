@@ -8,6 +8,7 @@ export function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'waiting' | 'verifying' | 'success' | 'error'>('waiting');
   const [email] = useState(searchParams.get('email') || '');
+  const [fallbackUrl, setFallbackUrl] = useState(searchParams.get('fallback_url') || '');
   const [errorMessage, setErrorMessage] = useState('');
   const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const navigate = useNavigate();
@@ -44,8 +45,11 @@ export function VerifyEmailPage() {
     if (!email || resendStatus === 'sending') return;
     setResendStatus('sending');
     try {
-      await authAPI.resendVerification(email);
+      const response = await authAPI.resendVerification(email);
       setResendStatus('sent');
+      if (response && response.verify_url) {
+        setFallbackUrl(response.verify_url);
+      }
       setTimeout(() => setResendStatus('idle'), 5000);
     } catch {
       setResendStatus('error');
@@ -132,6 +136,21 @@ export function VerifyEmailPage() {
                       <Link to="/register" className="text-[#C8962A] hover:underline">Sign up again</Link>
                     </p>
                   </div>
+
+                  {fallbackUrl && (
+                    <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-left">
+                      <p className="text-amber-800 text-xs font-semibold uppercase tracking-wider mb-1">Development Fallback Mode</p>
+                      <p className="text-[#6B7280] text-xs mb-3">
+                        SMTP credentials are not configured or email sending failed. Click below to verify instantly:
+                      </p>
+                      <a
+                        href={fallbackUrl}
+                        className="w-full inline-flex items-center justify-center py-2.5 px-3 bg-[#0D1B2A] text-white rounded-lg text-xs font-semibold hover:bg-[#1a2d45] transition-colors"
+                      >
+                        Verify Instantly
+                      </a>
+                    </div>
+                  )}
                 </>
               )}
             </>
