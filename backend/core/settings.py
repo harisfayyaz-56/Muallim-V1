@@ -102,9 +102,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Allow React frontend to talk to Django
 CORS_ALLOW_ALL_ORIGINS = True  # tighten this in production
 
-# Email settings (development)
-EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@example.com')
+# Email settings
+# Uses Gmail SMTP when EMAIL_HOST_USER/PASSWORD are set, otherwise falls back to console
+_email_host_user = os.environ.get('EMAIL_HOST_USER', '')
+if _email_host_user and os.environ.get('EMAIL_HOST_PASSWORD', ''):
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = _email_host_user
+    EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+    DEFAULT_FROM_EMAIL = f'Muallim <{_email_host_user}>'
+else:
+    EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@muallim.com')
 
 # REST framework + JWT
 from datetime import timedelta
