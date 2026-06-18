@@ -136,6 +136,9 @@ class RegisterView(APIView):
             frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
             verify_url = f"{frontend_domain}/verify-email?uid={uid}&token={token}"
             
+            # Print verification link clearly in console for local testing/logs
+            print(f"\n[EMAIL VERIFICATION] Verification link generated:\n{verify_url}\n")
+            
             html_message = f"""
             <html>
                 <body>
@@ -184,6 +187,9 @@ class ResendVerificationEmailView(APIView):
             frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
             verify_url = f"{frontend_domain}/verify-email?uid={uid}&token={token}"
             
+            # Print verification link clearly in console for local testing/logs
+            print(f"\n[EMAIL VERIFICATION RESEND] Verification link generated:\n{verify_url}\n")
+            
             html_message = f"""
             <html>
                 <body>
@@ -197,14 +203,22 @@ class ResendVerificationEmailView(APIView):
             </html>
             """
             
-            send_mail(
-                subject='Verify your Muallim Account',
-                message=f'Please verify your email by visiting: {verify_url}',
-                from_email=None,
-                recipient_list=[user.email],
-                html_message=html_message,
-                fail_silently=False,
-            )
+            try:
+                send_mail(
+                    subject='Verify your Muallim Account',
+                    message=f'Please verify your email by visiting: {verify_url}',
+                    from_email=None,
+                    recipient_list=[user.email],
+                    html_message=html_message,
+                    fail_silently=False,
+                )
+            except Exception as mail_err:
+                print(f"Error sending verification email: {str(mail_err)}")
+                # We return 200 OK anyway so we don't leak failures, or we return 200 with verification link in development mode
+                return Response({
+                    'detail': 'Verification email generated. Please check system logs for link since email delivery failed.'
+                }, status=status.HTTP_200_OK)
+
             return Response({'detail': 'Verification email sent'}, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
