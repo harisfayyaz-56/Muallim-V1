@@ -8,14 +8,46 @@ from rest_framework import serializers as rf_serializers
 class BookingSerializer(rf_serializers.ModelSerializer):
     student = rf_serializers.HiddenField(default=rf_serializers.CurrentUserDefault())
     teacher_id = rf_serializers.IntegerField(write_only=True, required=True)
+    teacher_id_read = rf_serializers.SerializerMethodField()
+    teacher_name = rf_serializers.SerializerMethodField()
+    teacher_avatar = rf_serializers.SerializerMethodField()
+    student_name = rf_serializers.SerializerMethodField()
+    student_avatar = rf_serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
         fields = [
-            'id', 'student', 'teacher_id', 'subject', 'description', 'scheduled_date',
+            'id', 'student', 'teacher_id', 'teacher_id_read', 'teacher_name', 'teacher_avatar',
+            'student_name', 'student_avatar', 'subject', 'description', 'scheduled_date',
             'duration_minutes', 'status', 'amount', 'meeting_link', 'notes', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'student', 'status', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'student', 'status', 'teacher_id_read', 'teacher_name', 'teacher_avatar',
+            'student_name', 'student_avatar', 'meeting_link', 'created_at', 'updated_at'
+        ]
+
+    def get_teacher_id_read(self, obj):
+        return obj.teacher_id
+
+    def get_teacher_name(self, obj):
+        return obj.teacher.user.get_full_name() or obj.teacher.user.username
+
+    def get_teacher_avatar(self, obj):
+        profile = getattr(obj.teacher.user, 'profile', None)
+        request = self.context.get('request')
+        if profile and profile.profile_picture:
+            return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
+        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+
+    def get_student_name(self, obj):
+        return obj.student.get_full_name() or obj.student.username
+
+    def get_student_avatar(self, obj):
+        profile = getattr(obj.student, 'profile', None)
+        request = self.context.get('request')
+        if profile and profile.profile_picture:
+            return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
+        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
 
     def validate_teacher_id(self, value):
         from .models.users import Teacher
