@@ -38,7 +38,8 @@ export function RegisterPage() {
     }
 
     try {
-      const response = await authAPI.register(form);
+      const { DEFAULT_TIMEZONE } = await import('../../utils/preferences');
+      const response = await authAPI.register({ ...form, timezone: DEFAULT_TIMEZONE });
       let targetPath = '/verify-email?email=' + encodeURIComponent(form.email);
       if (response && response.verify_url) {
         targetPath += '&fallback_url=' + encodeURIComponent(response.verify_url);
