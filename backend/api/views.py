@@ -173,11 +173,12 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Booking.objects.select_related('teacher', 'student')
+        qs = Booking.objects.select_related('teacher__user', 'student')
         if user.is_staff or user.is_superuser:
             return qs
         if hasattr(user, 'teacher_profile'):
-            return qs.filter(teacher__user=user)
+            from django.db.models import Q
+            return qs.filter(Q(teacher__user=user) | Q(student=user))
         return qs.filter(student=user)
 
     def get_permissions(self):
@@ -189,8 +190,12 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
         return perms
 
     def perform_create(self, serializer):
-        # ensure student is request.user
-        serializer.save(student=self.request.user)
+        import random
+        # Generate a random 10-letter code for Google Meet
+        code = "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=10))
+        formatted_code = f"{code[:3]}-{code[3:7]}-{code[7:]}"
+        meeting_link = f"https://meet.google.com/abc-{formatted_code}"
+        serializer.save(student=self.request.user, status='confirmed', meeting_link=meeting_link)
 
 
 class TeacherViewSet(viewsets.ModelViewSet):
@@ -214,7 +219,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
     def get_object(self):
         from .models.users import Teacher
         from django.shortcuts import get_object_or_404
-        if self.action in ['retrieve', 'approve', 'reject']:
+        if self.action in ['retrieve', 'approve', 'reject', 'availability', 'slots']:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
             filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
             return get_object_or_404(Teacher, **filter_kwargs)
@@ -489,14 +494,19 @@ class TeacherViewSet(viewsets.ModelViewSet):
         if not date_str:
             return Response({'detail': 'date query parameter is required (YYYY-MM-DD)'}, status=status.HTTP_400_BAD_REQUEST)
 
+        from datetime import datetime, time, timedelta
+        from zoneinfo import ZoneInfo
         try:
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         except ValueError:
             return Response({'detail': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
 
+        start_dt = datetime.combine(target_date - timedelta(days=1), time.min, tzinfo=ZoneInfo('UTC'))
+        end_dt = datetime.combine(target_date + timedelta(days=2), time.max, tzinfo=ZoneInfo('UTC'))
+
         active_bookings = teacher.bookings.filter(
             status__in=['pending', 'confirmed'],
-            scheduled_date__date=target_date,
+            scheduled_date__range=(start_dt, end_dt),
         )
         slots = generate_slots_for_date(teacher, target_date, duration, viewer_tz, active_bookings)
 
