@@ -117,3 +117,11 @@ export const createBooking = async (token: string, data: BookingPayload): Promis
   }
   return response.json();
 };
+
+export const getMyBookings = async (token: string): Promise<any[]> => {
+  const response = await fetch(`${API_BASE}/bookings/`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) throw new Error('Failed to fetch bookings');
+  return response.json();
+};
