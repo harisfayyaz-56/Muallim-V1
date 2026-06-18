@@ -62,6 +62,20 @@ export async function verifyEmail(payload: VerifyEmailPayload) {
   return res.json();
 }
 
+// Resend verification email
+export async function resendVerification(email: string) {
+  const res = await fetch(`${API_URL}/auth/resend-verification/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.detail || 'Failed to resend verification email');
+  }
+  return res.json();
+}
+
 // Login with email and password
 export async function login(payload: LoginPayload): Promise<AuthResponse> {
   const res = await fetch(`${API_URL}/auth/token/`, {
