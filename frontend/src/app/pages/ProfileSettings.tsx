@@ -395,6 +395,7 @@ export function ProfileSettings() {
                               await setPassword(token, passwordForm.newPassword);
                             }
                             setPasswordSuccess('Password updated successfully!');
+                            setHasPassword(true);
                             setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
                             setTimeout(() => setPasswordSuccess(''), 3000);
                           } catch (err: any) {
