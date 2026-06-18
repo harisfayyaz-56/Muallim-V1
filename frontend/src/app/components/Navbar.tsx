@@ -12,6 +12,7 @@ const NAV_LINKS = [
 export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?: boolean; isTeacher?: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const location = useLocation();
 
@@ -34,7 +35,7 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
   const avatarUrl = profile?.profile_picture || profile?.profile_picture_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format';
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-[rgba(13,27,42,0.08)]">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-[rgba(13,27,42,0.08)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -49,19 +50,32 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-1">
-            {NAV_LINKS.map(link => (
-              <Link
-                key={link.href}
-                to={link.href}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors duration-150 ${
-                  isActive(link.href)
-                    ? 'text-[#0D1B2A] bg-[#F8F6F1]'
-                    : 'text-[#6B7280] hover:text-[#0D1B2A] hover:bg-[#F8F6F1]'
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {NAV_LINKS.map(link => {
+              if (link.label === 'How It Works') {
+                return (
+                  <button
+                    key={link.href}
+                    onClick={() => setHowItWorksOpen(true)}
+                    className="px-4 py-2 rounded-lg text-sm text-[#6B7280] hover:text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors duration-150"
+                  >
+                    {link.label}
+                  </button>
+                );
+              }
+              return (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors duration-150 ${
+                    isActive(link.href)
+                      ? 'text-[#0D1B2A] bg-[#F8F6F1]'
+                      : 'text-[#6B7280] hover:text-[#0D1B2A] hover:bg-[#F8F6F1]'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
           </div>
 
           {/* Desktop Actions */}
@@ -93,6 +107,11 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
                       {(isTeacher || profile?.user_type === 'both' || profile?.user_type === 'teacher') && (
                         <Link to="/teacher-dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
                           <GraduationCap className="w-4 h-4 text-[#6B7280]" /> Teacher Dashboard
+                        </Link>
+                      )}
+                      {(profile?.is_staff || profile?.is_superuser) && (
+                        <Link to="/admin-dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
+                          <User className="w-4 h-4 text-[#6B7280]" /> Admin Panel
                         </Link>
                       )}
                       <Link to="/messages" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
@@ -134,16 +153,32 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
       {/* Mobile Menu */}
       {mobileOpen && (
         <div className="md:hidden bg-white border-t border-[rgba(13,27,42,0.08)] px-4 py-4 space-y-1">
-          {NAV_LINKS.map(link => (
-            <Link
-              key={link.href}
-              to={link.href}
-              className="block px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg transition-colors"
-              onClick={() => setMobileOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map(link => {
+            if (link.label === 'How It Works') {
+              return (
+                <button
+                  key={link.href}
+                  onClick={() => {
+                    setHowItWorksOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  className="w-full text-left block px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg transition-colors"
+                >
+                  {link.label}
+                </button>
+              );
+            }
+            return (
+              <Link
+                key={link.href}
+                to={link.href}
+                className="block px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg transition-colors"
+                onClick={() => setMobileOpen(false)}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
           <div className="pt-3 border-t border-[rgba(13,27,42,0.08)] mt-3 flex flex-col gap-2">
             {isLoggedIn ? (
               <>
@@ -164,6 +199,57 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
                 </Link>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* How It Works Modal */}
+      {howItWorksOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[rgba(13,27,42,0.08)] relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setHowItWorksOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-[#0D1B2A] hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            <h2 className="text-xl text-[#0D1B2A] mb-5" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
+              How Muallim Works
+            </h2>
+            
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <div className="w-6 h-6 rounded-full bg-[#C8962A]/10 text-[#C8962A] flex items-center justify-center shrink-0 font-bold text-xs">1</div>
+                <div>
+                  <p className="font-semibold text-[#0D1B2A] text-sm">Find a Teacher</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Search and select a qualified teacher matching your learning goals.</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="w-6 h-6 rounded-full bg-[#0D1B2A]/10 text-[#0D1B2A] flex items-center justify-center shrink-0 font-bold text-xs">2</div>
+                <div>
+                  <p className="font-semibold text-[#0D1B2A] text-sm">Book a Slot</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Pick a convenient date and time slot, then pay to confirm your booking.</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="w-6 h-6 rounded-full bg-[#C8962A]/10 text-[#C8962A] flex items-center justify-center shrink-0 font-bold text-xs">3</div>
+                <div>
+                  <p className="font-semibold text-[#0D1B2A] text-sm">Start Learning</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Join the session via the Google Meet link generated on your dashboard.</p>
+                </div>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setHowItWorksOpen(false)}
+              className="w-full mt-6 bg-[#0D1B2A] hover:bg-[#1a2d45] text-white py-2.5 rounded-xl text-sm transition-colors font-semibold"
+            >
+              Got it, thanks!
+            </button>
           </div>
         </div>
       )}

@@ -247,8 +247,18 @@ export const createTeacherProfile = async (
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to create teacher profile');
+    const error = await response.json().catch(() => ({}));
+    if (error.detail) {
+      throw new Error(error.detail);
+    }
+    const messages = Object.entries(error)
+      .map(([field, msgs]) => {
+        const fieldName = field.charAt(0).toUpperCase() + field.slice(1);
+        const fieldMsgs = Array.isArray(msgs) ? msgs.join(' ') : String(msgs);
+        return `${fieldName}: ${fieldMsgs}`;
+      })
+      .join(' | ');
+    throw new Error(messages || 'Failed to create teacher profile');
   }
 
   return response.json();
@@ -271,8 +281,18 @@ export const updateTeacherProfile = async (
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to update teacher profile');
+    const error = await response.json().catch(() => ({}));
+    if (error.detail) {
+      throw new Error(error.detail);
+    }
+    const messages = Object.entries(error)
+      .map(([field, msgs]) => {
+        const fieldName = field.charAt(0).toUpperCase() + field.slice(1);
+        const fieldMsgs = Array.isArray(msgs) ? msgs.join(' ') : String(msgs);
+        return `${fieldName}: ${fieldMsgs}`;
+      })
+      .join(' | ');
+    throw new Error(messages || 'Failed to update teacher profile');
   }
 
   return response.json();
@@ -371,6 +391,67 @@ export const rejectTeacher = async (
 
   if (!response.ok) {
     throw new Error('Failed to reject teacher');
+  }
+
+  return response.json();
+};
+
+/**
+ * Admin: Get all users
+ */
+export const getAdminUsers = async (token: string): Promise<any[]> => {
+  const response = await fetch(`${API_BASE}/profile/admin/users/`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch users');
+  }
+
+  return response.json();
+};
+
+/**
+ * Admin: Suspend a user
+ */
+export const suspendUser = async (token: string, userId: number): Promise<any> => {
+  const response = await fetch(`${API_BASE}/profile/admin/suspend/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to suspend user');
+  }
+
+  return response.json();
+};
+
+/**
+ * Admin: Unsuspend a user
+ */
+export const unsuspendUser = async (token: string, userId: number): Promise<any> => {
+  const response = await fetch(`${API_BASE}/profile/admin/unsuspend/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to unsuspend user');
   }
 
   return response.json();

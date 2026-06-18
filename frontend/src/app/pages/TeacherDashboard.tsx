@@ -63,7 +63,7 @@ export function TeacherDashboard() {
       }
 
       try {
-        const bookings = await getMyBookings(token);
+        const bookings = await getMyBookings(token, 'teacher');
         const upcoming: any[] = [];
         const past: any[] = [];
         let totalEarnings = 0;

@@ -38,7 +38,7 @@ export function StudentDashboard() {
         const tz = profile.timezone || DEFAULT_TIMEZONE;
         setUserTimezone(tz);
 
-        const bookings = await getMyBookings(token);
+        const bookings = await getMyBookings(token, 'student');
         const upcoming: any[] = [];
         const past: any[] = [];
         let completedCount = 0;

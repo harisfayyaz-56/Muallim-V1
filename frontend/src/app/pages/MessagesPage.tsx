@@ -1,19 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Send, ArrowLeft } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { CONVERSATIONS } from '../data/mockData';
+import { getProfile } from '../../api/profile';
 
 export function MessagesPage() {
-  const [selectedConvId, setSelectedConvId] = useState(CONVERSATIONS[0].id);
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(
+    CONVERSATIONS.length > 0 ? CONVERSATIONS[0].id : null
+  );
   const [newMessage, setNewMessage] = useState('');
   const [conversations, setConversations] = useState(CONVERSATIONS);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string>('');
 
-  const selectedConv = conversations.find(c => c.id === selectedConvId)!;
+  useEffect(() => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const profile = await getProfile(token);
+        const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || '';
+        setCurrentUserAvatar(pic);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, []);
+
+  const selectedConv = selectedConvId ? conversations.find(c => c.id === selectedConvId) : null;
 
   const sendMessage = () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !selectedConvId) return;
     setConversations(prev => prev.map(conv => {
       if (conv.id !== selectedConvId) return conv;
       return {
@@ -123,15 +141,15 @@ export function MessagesPage() {
                     </Link>
                   </div>
 
-                  {/* Messages */}
                   <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                     {selectedConv.messages.map(msg => {
                       const isMe = msg.senderId === 'me';
+                      const avatar = isMe 
+                        ? (currentUserAvatar || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format') 
+                        : (selectedConv.participantAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80&h=80&fit=crop');
                       return (
                         <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
-                          {!isMe && (
-                            <img src={msg.senderAvatar} alt={msg.senderName} className="w-7 h-7 rounded-full object-cover shrink-0" />
-                          )}
+                          <img src={avatar} alt={msg.senderName} className="w-7 h-7 rounded-full object-cover shrink-0" />
                           <div className={`max-w-xs lg:max-w-md ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
                             <div
                               className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
