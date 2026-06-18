@@ -16,6 +16,7 @@ class UserProfile(models.Model):
         ('Asia/Abu_Dhabi', 'Abu Dhabi (GST, UTC+4)'),
         ('Asia/Sharjah', 'Sharjah (GST, UTC+4)'),
         ('Asia/Kolkata', 'India (IST, UTC+5:30)'),
+        ('Asia/Karachi', 'Karachi (PKT, UTC+5)'),
         ('Europe/London', 'London (GMT, UTC+0)'),
         ('US/Eastern', 'Eastern (EST/EDT, UTC-5/-4)'),
         ('US/Central', 'Central (CST/CDT, UTC-6/-5)'),
