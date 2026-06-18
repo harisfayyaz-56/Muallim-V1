@@ -58,7 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const googleLogin = async (idToken: string) => {
-    const response = await authAPI.googleAuth(idToken);
+    const { DEFAULT_TIMEZONE } = await import('../../utils/preferences');
+    const response = await authAPI.googleAuth(idToken, DEFAULT_TIMEZONE);
     setTokens(response.access, response.refresh);
     // Fetch user profile to get admin status
     try {
