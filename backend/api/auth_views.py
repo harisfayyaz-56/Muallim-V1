@@ -2,6 +2,7 @@ from django.contrib.auth.models import User
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.mail import send_mail
 from django.urls import reverse
+from django.conf import settings
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
@@ -120,25 +121,39 @@ class RegisterView(APIView):
         profile = UserProfile.objects.create(user=user)
 
         # Send verification email
-        self._send_verification_email(user, request)
+        email_info = self._send_verification_email(user, request)
 
-        return Response({
+        resp_data = {
             'detail': 'User created. Verification email sent.',
             'email': email,
-            'email_verified': False
-        }, status=status.HTTP_201_CREATED)
+            'email_verified': False,
+            'email_sent': email_info['sent']
+        }
+        
+        if not email_info['sent'] and settings.DEBUG:
+            resp_data['verify_url'] = email_info['verify_url']
+
+        return Response(resp_data, status=status.HTTP_201_CREATED)
 
     def _send_verification_email(self, user, request):
         """Send verification email to user"""
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
+        verify_url = f"{frontend_domain}/verify-email?uid={uid}&token={token}"
+        
+        # Print verification link clearly in console for local testing/logs
+        print(f"\n[EMAIL VERIFICATION] Verification link generated:\n{verify_url}\n")
+        
+        # Check if email is actually configured
+        email_host_user = os.environ.get('EMAIL_HOST_USER', '')
+        smtp_configured = email_host_user and email_host_user != 'your-gmail@gmail.com'
+        
+        if not smtp_configured:
+            print("[EMAIL VERIFICATION] SMTP credentials not configured. Skipping send_mail and using console fallback.")
+            return {'sent': False, 'verify_url': verify_url}
+            
         try:
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            frontend_domain = os.environ.get('FRONTEND_DOMAIN', 'http://localhost:3000')
-            verify_url = f"{frontend_domain}/verify-email?uid={uid}&token={token}"
-            
-            # Print verification link clearly in console for local testing/logs
-            print(f"\n[EMAIL VERIFICATION] Verification link generated:\n{verify_url}\n")
-            
             html_message = f"""
             <html>
                 <body>
@@ -161,9 +176,10 @@ class RegisterView(APIView):
                 html_message=html_message,
                 fail_silently=False,
             )
+            return {'sent': True, 'verify_url': verify_url}
         except Exception as e:
             print(f"Error sending verification email: {str(e)}")
-            # Don't fail the registration if email sending fails
+            return {'sent': False, 'verify_url': verify_url}
 
 
 class ResendVerificationEmailView(APIView):
@@ -203,23 +219,37 @@ class ResendVerificationEmailView(APIView):
             </html>
             """
             
-            try:
-                send_mail(
-                    subject='Verify your Muallim Account',
-                    message=f'Please verify your email by visiting: {verify_url}',
-                    from_email=None,
-                    recipient_list=[user.email],
-                    html_message=html_message,
-                    fail_silently=False,
-                )
-            except Exception as mail_err:
-                print(f"Error sending verification email: {str(mail_err)}")
-                # We return 200 OK anyway so we don't leak failures, or we return 200 with verification link in development mode
-                return Response({
-                    'detail': 'Verification email generated. Please check system logs for link since email delivery failed.'
-                }, status=status.HTTP_200_OK)
+            # Check if email is actually configured
+            email_host_user = os.environ.get('EMAIL_HOST_USER', '')
+            smtp_configured = email_host_user and email_host_user != 'your-gmail@gmail.com'
+            
+            email_sent = False
+            
+            if smtp_configured:
+                try:
+                    send_mail(
+                        subject='Verify your Muallim Account',
+                        message=f'Please verify your email by visiting: {verify_url}',
+                        from_email=None,
+                        recipient_list=[user.email],
+                        html_message=html_message,
+                        fail_silently=False,
+                    )
+                    email_sent = True
+                except Exception as mail_err:
+                    print(f"Error sending verification email: {str(mail_err)}")
+            else:
+                print("[EMAIL VERIFICATION RESEND] SMTP credentials not configured. Skipping send_mail and using console fallback.")
+            
+            resp_data = {
+                'detail': 'Verification email sent' if email_sent else 'Verification link generated in backend console.',
+                'email_sent': email_sent
+            }
+            
+            if not email_sent and settings.DEBUG:
+                resp_data['verify_url'] = verify_url
 
-            return Response({'detail': 'Verification email sent'}, status=status.HTTP_200_OK)
+            return Response(resp_data, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
