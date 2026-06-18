@@ -4,10 +4,9 @@ import { Calendar, DollarSign, Users, Clock, Star, Settings, ExternalLink, Check
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getProfile, getTeacherProfile } from '../../api/profile';
-import { getMyAvailability } from '../../api/availability';
-import { UPCOMING_SESSIONS, PAST_SESSIONS } from '../data/mockData';
+import { getMyAvailability, getMyBookings } from '../../api/availability';
 import { DAYS_SHORT, TIME_SLOTS, EMPTY_GRID, countWeeklySlots } from '../utils/availability';
-import { getTimezoneAbbr } from '../../utils/preferences';
+import { getTimezoneAbbr, formatSlotTime, DEFAULT_TIMEZONE } from '../../utils/preferences';
 
 const DAYS = DAYS_SHORT;
 
@@ -17,19 +16,27 @@ export function TeacherDashboard() {
   const [teacherAvatar, setTeacherAvatar] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format');
   const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
   const [availabilityGrid, setAvailabilityGrid] = useState<Record<string, string[]>>({ ...EMPTY_GRID });
-  const [teacherTimezone, setTeacherTimezone] = useState('Asia/Dubai');
+  const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
+  const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
+  const [earningsThisMonth, setEarningsThisMonth] = useState(0);
+  const [studentCount, setStudentCount] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
     if (!token) return;
     (async () => {
+      let tz = DEFAULT_TIMEZONE;
       try {
         const profile = await getProfile(token);
         if (profile) {
           setTeacherName(`${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username);
           const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
           if (pic) setTeacherAvatar(pic);
-          if (profile.timezone) setTeacherTimezone(profile.timezone);
+          if (profile.timezone) {
+            tz = profile.timezone;
+            setTeacherTimezone(profile.timezone);
+          }
         }
       } catch (err) {
         console.error('TeacherDashboard failed to load profile:', err);
@@ -47,9 +54,61 @@ export function TeacherDashboard() {
       try {
         const avail = await getMyAvailability(token);
         if (avail.grid) setAvailabilityGrid(avail.grid);
-        if (avail.timezone) setTeacherTimezone(avail.timezone);
+        if (avail.timezone) {
+          tz = avail.timezone;
+          setTeacherTimezone(avail.timezone);
+        }
       } catch {
         // No availability set yet
+      }
+
+      try {
+        const bookings = await getMyBookings(token);
+        const upcoming: any[] = [];
+        const past: any[] = [];
+        let totalEarnings = 0;
+        const activeStudents = new Set<string>();
+
+        const now = new Date();
+        bookings.forEach((b: any) => {
+          const sDate = new Date(b.scheduled_date);
+          const isUpcoming = sDate >= now;
+          const session = {
+            id: String(b.id),
+            teacherId: String(b.teacher_id_read || b.teacher_id),
+            teacherName: b.teacher_name,
+            teacherAvatar: b.teacher_avatar,
+            studentName: b.student_name,
+            studentAvatar: b.student_avatar,
+            subject: b.subject,
+            date: new Date(b.scheduled_date).toLocaleDateString('en-AE', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }),
+            time: formatSlotTime(b.scheduled_date, tz),
+            duration: b.duration_minutes,
+            status: isUpcoming ? 'upcoming' : b.status,
+            totalPaid: Number(b.amount),
+            meetingLink: b.meeting_link,
+          };
+
+          if (isUpcoming && (b.status === 'confirmed' || b.status === 'pending')) {
+            upcoming.push(session);
+          } else {
+            if (b.status === 'confirmed' || b.status === 'completed') {
+              session.status = 'completed';
+              totalEarnings += Number(b.amount);
+              activeStudents.add(b.student_name);
+            } else {
+              session.status = 'cancelled';
+            }
+            past.push(session);
+          }
+        });
+
+        setUpcomingSessions(upcoming);
+        setPastSessions(past);
+        setEarningsThisMonth(totalEarnings);
+        setStudentCount(activeStudents.size);
+      } catch (err) {
+        console.error('TeacherDashboard failed to load bookings:', err);
       }
     })();
   }, []);
@@ -125,10 +184,10 @@ export function TeacherDashboard() {
               {/* Stats */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { icon: DollarSign, label: 'This Month', value: 'AED 1,800', sub: '+12% vs last month', color: '#C8962A' },
-                  { icon: Users, label: 'Active Students', value: '8', sub: '3 new this month', color: '#0D1B2A' },
-                  { icon: Calendar, label: 'Upcoming Sessions', value: '5', sub: 'Next: Mon Jan 20', color: '#C8962A' },
-                  { icon: Star, label: 'Rating', value: '4.9', sub: 'Based on 127 reviews', color: '#0D1B2A' },
+                  { icon: DollarSign, label: 'Earnings', value: `AED ${earningsThisMonth}`, sub: 'All-time earnings', color: '#C8962A' },
+                  { icon: Users, label: 'Active Students', value: String(studentCount), sub: 'Unique students', color: '#0D1B2A' },
+                  { icon: Calendar, label: 'Upcoming Sessions', value: String(upcomingSessions.length), sub: upcomingSessions.length > 0 ? `Next: ${upcomingSessions[0].date}` : 'No upcoming sessions', color: '#C8962A' },
+                  { icon: Star, label: 'Rating', value: '5.0', sub: 'Based on your sessions', color: '#0D1B2A' },
                 ].map(stat => (
                   <div key={stat.label} className="bg-white rounded-2xl p-5 border border-[rgba(13,27,42,0.06)]">
                     <div className="flex items-center gap-3 mb-3">
@@ -179,20 +238,24 @@ export function TeacherDashboard() {
                     Next Sessions
                   </h3>
                   <div className="space-y-3">
-                    {UPCOMING_SESSIONS.map(s => (
-                      <div key={s.id} className="bg-[#F8F6F1] rounded-xl p-3">
-                        <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{s.subject.split('—')[0].trim()}</p>
-                        <p className="text-[#9CA3AF] text-xs mt-0.5">Student: {s.studentName === 'You' ? 'Omar Hassan' : s.studentName}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[#C8962A] text-xs">{s.date} · {s.time}</span>
-                          {s.meetingLink && (
-                            <a href={s.meetingLink} className="text-[#9CA3AF] hover:text-[#C8962A] transition-colors" target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
+                    {upcomingSessions.length === 0 ? (
+                      <p className="text-xs text-[#9CA3AF]">No upcoming sessions</p>
+                    ) : (
+                      upcomingSessions.slice(0, 3).map(s => (
+                        <div key={s.id} className="bg-[#F8F6F1] rounded-xl p-3">
+                          <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{s.subject}</p>
+                          <p className="text-[#9CA3AF] text-xs mt-0.5">Student: {s.studentName}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-[#C8962A] text-xs">{s.date} · {s.time}</span>
+                            {s.meetingLink && (
+                              <a href={s.meetingLink} className="text-[#9CA3AF] hover:text-[#C8962A] transition-colors" target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                   <button onClick={() => setActiveTab('sessions')} className="block w-full text-center text-xs text-[#C8962A] hover:underline mt-3">
                     View all sessions →
@@ -208,28 +271,34 @@ export function TeacherDashboard() {
                 <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>All Sessions</h3>
               </div>
               <div className="divide-y divide-[rgba(13,27,42,0.06)]">
-                {[...UPCOMING_SESSIONS, ...PAST_SESSIONS].map(session => (
-                  <div key={session.id} className="px-5 py-4 flex items-center gap-4 hover:bg-[#F8F6F1]/50 transition-colors">
-                    <div className="w-10 h-10 rounded-xl bg-[#F8F6F1] flex items-center justify-center shrink-0">
-                      <Calendar className="w-5 h-5 text-[#C8962A]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{session.subject}</p>
-                      <p className="text-[#9CA3AF] text-xs mt-0.5">{session.date} · {session.time} · {session.duration}min</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[#C8962A] text-sm" style={{ fontWeight: 600 }}>AED {session.totalPaid}</p>
-                      <span className={`text-xs ${session.status === 'upcoming' ? 'text-emerald-600' : 'text-[#9CA3AF]'}`}>
-                        {session.status}
-                      </span>
-                    </div>
-                    {session.status === 'upcoming' && session.meetingLink && (
-                      <a href={session.meetingLink} className="p-2 hover:bg-[#F8F6F1] rounded-lg transition-colors" target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="w-4 h-4 text-[#9CA3AF]" />
-                      </a>
-                    )}
+                {[...upcomingSessions, ...pastSessions].length === 0 ? (
+                  <div className="px-5 py-8 text-center text-[#9CA3AF] text-sm">
+                    No sessions found
                   </div>
-                ))}
+                ) : (
+                  [...upcomingSessions, ...pastSessions].map(session => (
+                    <div key={session.id} className="px-5 py-4 flex items-center gap-4 hover:bg-[#F8F6F1]/50 transition-colors">
+                      <div className="w-10 h-10 rounded-xl bg-[#F8F6F1] flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5 text-[#C8962A]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{session.subject}</p>
+                        <p className="text-[#9CA3AF] text-xs mt-0.5">{session.date} · {session.time} · {session.duration}min · Student: {session.studentName}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[#C8962A] text-sm" style={{ fontWeight: 600 }}>AED {session.totalPaid}</p>
+                        <span className={`text-xs ${session.status === 'upcoming' ? 'text-emerald-600' : 'text-[#9CA3AF]'}`}>
+                          {session.status}
+                        </span>
+                      </div>
+                      {session.status === 'upcoming' && session.meetingLink && (
+                        <a href={session.meetingLink} className="p-2 hover:bg-[#F8F6F1] rounded-lg transition-colors" target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="w-4 h-4 text-[#9CA3AF]" />
+                        </a>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
