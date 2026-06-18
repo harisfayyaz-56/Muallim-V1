@@ -30,7 +30,8 @@ export function SearchPage() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await getTeachers();
+        const token = localStorage.getItem('muallim_access_token');
+        const data = await getTeachers(token || undefined);
         setTeachers(data.map(mapProfileToTeacher));
       } catch (err) {
         console.error('Error fetching teachers:', err);

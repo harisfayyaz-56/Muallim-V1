@@ -55,6 +55,11 @@ class BookingSerializer(rf_serializers.ModelSerializer):
             teacher = Teacher.objects.get(pk=value)
             if teacher.status != 'approved':
                 raise rf_serializers.ValidationError('Teacher is not available for bookings')
+            
+            # Prevent booking oneself
+            request = self.context.get('request')
+            if request and request.user == teacher.user:
+                raise rf_serializers.ValidationError('You cannot book a session with yourself')
         except Teacher.DoesNotExist:
             raise rf_serializers.ValidationError('Teacher not found')
         return value

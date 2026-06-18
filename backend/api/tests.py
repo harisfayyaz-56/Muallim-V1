@@ -226,3 +226,43 @@ class UserManagementTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.teacher_profile.refresh_from_db()
         self.assertFalse(self.teacher_profile.is_suspended)
+
+    def test_teacher_cannot_see_themselves_in_teacher_list(self):
+        # Authenticate as teacher
+        self.client.force_authenticate(user=self.teacher_user)
+        
+        # Get teacher list
+        teachers_url = '/api/teacher/'
+        response = self.client.get(teachers_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify self is not in the list
+        teacher_ids = [t['id'] for t in response.data]
+        self.assertNotIn(self.teacher.id, teacher_ids)
+
+    def test_teacher_cannot_book_themselves(self):
+        # Create availability for teacher
+        # 2026-06-20 is a Saturday
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='saturday',
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            is_available=True
+        )
+
+        booking_url = '/api/bookings/'
+        booking_payload = {
+            'teacher_id': self.teacher.id,
+            'scheduled_date': '2026-06-20T06:00:00Z', # 10:00 Asia/Dubai
+            'duration_minutes': 60,
+            'subject': 'Math',
+            'amount': 100.0
+        }
+
+        # Authenticate as teacher and try to book themselves
+        self.client.force_authenticate(user=self.teacher_user)
+        response = self.client.post(booking_url, booking_payload, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cannot book a session with yourself', response.data['teacher_id'][0].lower())

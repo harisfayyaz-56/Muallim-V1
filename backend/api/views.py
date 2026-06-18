@@ -298,8 +298,13 @@ class TeacherViewSet(viewsets.ModelViewSet):
         from .models.users import Teacher
         if self.action in ['list', 'retrieve']:
             if self.request.user.is_authenticated and (self.request.user.is_staff or self.request.user.is_superuser):
-                return Teacher.objects.all()
-            return Teacher.objects.filter(status='approved')
+                qs = Teacher.objects.all()
+            else:
+                qs = Teacher.objects.filter(status='approved')
+
+            if self.action == 'list' and self.request.user.is_authenticated:
+                qs = qs.exclude(user=self.request.user)
+            return qs
         return Teacher.objects.filter(user=self.request.user)
 
     def get_object(self):

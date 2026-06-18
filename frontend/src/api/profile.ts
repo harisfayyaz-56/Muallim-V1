@@ -301,12 +301,16 @@ export const updateTeacherProfile = async (
 /**
  * Get public list of approved teachers
  */
-export const getTeachers = async (): Promise<TeacherProfile[]> => {
+export const getTeachers = async (token?: string): Promise<TeacherProfile[]> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const response = await fetch(`${API_BASE}/teacher/`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
 
   if (!response.ok) {
