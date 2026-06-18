@@ -118,7 +118,11 @@ class RegisterView(APIView):
 
         user = User.objects.create_user(username=username, email=email, password=password, first_name=first_name, last_name=last_name)
         # create profile
-        profile = UserProfile.objects.create(user=user)
+        timezone = data.get('timezone', 'Asia/Dubai')
+        valid_timezones = [choice[0] for choice in UserProfile.TIMEZONE_CHOICES]
+        if timezone not in valid_timezones:
+            timezone = 'Asia/Dubai'
+        profile = UserProfile.objects.create(user=user, timezone=timezone)
 
         # Send verification email
         email_info = self._send_verification_email(user, request)
@@ -388,8 +392,23 @@ class GoogleAuthView(APIView):
             'last_name': id_info.get('family_name', ''),
             'is_active': True,
         })
+        timezone = request.data.get('timezone', 'Asia/Dubai')
+        valid_timezones = [choice[0] for choice in UserProfile.TIMEZONE_CHOICES]
+        if timezone not in valid_timezones:
+            timezone = 'Asia/Dubai'
+
         if created:
-            UserProfile.objects.get_or_create(user=user)
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.email_verified = True
+            profile.timezone = timezone
+            profile.save()
+        else:
+            # Ensure existing Google users also have email_verified=True
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.email_verified = True
+            if profile.timezone == 'Asia/Dubai' and timezone != 'Asia/Dubai':
+                profile.timezone = timezone
+            profile.save()
         # Issue JWT tokens for the user
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
