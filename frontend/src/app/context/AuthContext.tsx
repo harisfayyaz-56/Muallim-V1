@@ -1,12 +1,13 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as authAPI from '../../api/auth';
+import { getProfile } from '../../api/profile';
 
 interface AuthContextType {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  googleLogin: (idToken: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<any>;
+  googleLogin: (idToken: string) => Promise<any>;
   logout: () => Promise<void>;
   setTokens: (access: string, refresh: string) => void;
   clearTokens: () => void;
@@ -46,11 +47,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     const response = await authAPI.login({ email, password });
     setTokens(response.access, response.refresh);
+    // Fetch user profile to get admin status
+    try {
+      const userProfile = await getProfile(response.access);
+      return userProfile;
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      return null;
+    }
   };
 
   const googleLogin = async (idToken: string) => {
     const response = await authAPI.googleAuth(idToken);
     setTokens(response.access, response.refresh);
+    // Fetch user profile to get admin status
+    try {
+      const userProfile = await getProfile(response.access);
+      return userProfile;
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      return null;
+    }
   };
 
   const logout = async () => {

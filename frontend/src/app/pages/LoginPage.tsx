@@ -19,8 +19,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate('/dashboard');
+      const result = await login(email, password);
+      // Check if user is admin and redirect to admin dashboard
+      if (result?.is_staff || result?.is_superuser) {
+        navigate('/admin-dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -32,8 +37,13 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await googleLogin(credentialResponse.credential);
-      navigate('/dashboard');
+      const result = await googleLogin(credentialResponse.credential);
+      // Check if user is admin and redirect to admin dashboard
+      if (result?.is_staff || result?.is_superuser) {
+        navigate('/admin-dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Google sign-in failed');
     } finally {
