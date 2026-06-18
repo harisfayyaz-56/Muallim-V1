@@ -1,12 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Calendar, MessageSquare, BookOpen, Clock, Star, ExternalLink, ArrowRight, TrendingUp } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { UPCOMING_SESSIONS, PAST_SESSIONS, TEACHERS } from '../data/mockData';
+import { UPCOMING_SESSIONS, PAST_SESSIONS } from '../data/mockData';
+import { getProfile } from '../../api/profile';
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [userName, setUserName] = useState('');
+  const [userAvatar, setUserAvatar] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const profile = await getProfile(token);
+        const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username;
+        setUserName(name);
+        const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
+        if (pic) setUserAvatar(pic);
+      } catch (err) {
+        console.error('StudentDashboard: failed to load profile', err);
+      }
+    })();
+  }, []);
 
   const sessions = activeTab === 'upcoming' ? UPCOMING_SESSIONS : PAST_SESSIONS;
 
@@ -19,15 +45,17 @@ export function StudentDashboard() {
         <div className="bg-[#0D1B2A]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <div className="flex items-center gap-4">
-              <img
-                src="https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
-                alt="Profile"
-                className="w-14 h-14 rounded-xl object-cover border-2 border-[#C8962A]/30"
-              />
+              {userAvatar ? (
+                <img src={userAvatar} alt="Profile" className="w-14 h-14 rounded-xl object-cover border-2 border-[#C8962A]/30" />
+              ) : (
+                <div className="w-14 h-14 rounded-xl bg-[#C8962A] flex items-center justify-center border-2 border-[#C8962A]/30 text-white text-xl" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
+                  {userName ? userName.charAt(0).toUpperCase() : '?'}
+                </div>
+              )}
               <div>
-                <p className="text-[#9CA3AF] text-sm">Good evening,</p>
+                <p className="text-[#9CA3AF] text-sm">{getGreeting()},</p>
                 <h1 className="text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.75rem' }}>
-                  Omar Hassan
+                  {userName || 'Student'}
                 </h1>
               </div>
               <div className="ml-auto">
@@ -182,7 +210,7 @@ export function StudentDashboard() {
                   You might like
                 </h3>
                 <div className="space-y-3">
-                  {TEACHERS.slice(2, 4).map(t => (
+                  {[].slice(2, 4).map(t => (
                     <Link key={t.id} to={`/teacher/${t.id}`} className="flex items-center gap-3 hover:bg-[#F8F6F1] rounded-xl p-2.5 -mx-2.5 transition-colors group">
                       <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-xl object-cover" />
                       <div className="flex-1 min-w-0">
