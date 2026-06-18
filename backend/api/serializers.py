@@ -66,6 +66,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     has_password = serializers.SerializerMethodField()
     has_teacher_profile = serializers.SerializerMethodField()
     teacher_status = serializers.SerializerMethodField()
+    is_staff = serializers.BooleanField(source='user.is_staff', read_only=True)
+    is_superuser = serializers.BooleanField(source='user.is_superuser', read_only=True)
 
     class Meta:
         model = UserProfile
@@ -73,7 +75,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'user_type', 'phone', 'bio', 'profile_picture', 'location',
             'timezone', 'currency', 'created_at', 'updated_at', 'has_password',
-            'has_teacher_profile', 'teacher_status'
+            'has_teacher_profile', 'teacher_status', 'is_staff', 'is_superuser'
         ]
         read_only_fields = ['id', 'currency', 'created_at', 'updated_at']
 
@@ -85,7 +87,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_teacher_status(self, obj):
         if hasattr(obj.user, 'teacher_profile'):
-            return 'approved' if obj.user.teacher_profile.is_verified else 'pending'
+            return obj.user.teacher_profile.status
         return None
 
     def update(self, instance, validated_data):
