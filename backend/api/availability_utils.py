@@ -131,15 +131,27 @@ def generate_slots_for_date(teacher, target_date, duration_minutes, viewer_timez
     viewer_tz = ZoneInfo(viewer_timezone)
     session_duration = getattr(teacher, 'session_duration', 'both') or 'both'
 
-    day_of_week = WEEKDAYS[target_date.weekday()]
-    availabilities = teacher.availabilities.filter(day_of_week=day_of_week, is_available=True)
+    target_weekday_idx = target_date.weekday()
+    candidate_indices = [(target_weekday_idx - 1) % 7, target_weekday_idx, (target_weekday_idx + 1) % 7]
+    query_weekdays = [WEEKDAYS[idx] for idx in candidate_indices]
+
+    availabilities = teacher.availabilities.filter(day_of_week__in=query_weekdays, is_available=True)
 
     slots = []
     seen = set()
 
     for av in availabilities:
+        av_idx = WEEKDAYS.index(av.day_of_week)
+        diff = av_idx - target_weekday_idx
+        if diff == -6:
+            diff = 1
+        elif diff == 6:
+            diff = -1
+        
+        slot_date_teacher = target_date + timedelta(days=diff)
+
         for h, m in _get_candidate_starts(av.start_time.hour, session_duration, duration_minutes):
-            dt_teacher = datetime(target_date.year, target_date.month, target_date.day, h, m, tzinfo=teacher_tz)
+            dt_teacher = datetime(slot_date_teacher.year, slot_date_teacher.month, slot_date_teacher.day, h, m, tzinfo=teacher_tz)
             dt_utc = dt_teacher.astimezone(ZoneInfo('UTC'))
             slot_end = dt_utc + timedelta(minutes=duration_minutes)
 
@@ -151,6 +163,9 @@ def generate_slots_for_date(teacher, target_date, duration_minutes, viewer_timez
                 continue
 
             dt_viewer = dt_teacher.astimezone(viewer_tz)
+            if dt_viewer.date() != target_date:
+                continue
+
             time_str = dt_viewer.strftime('%H:%M')
             key = (time_str, dt_utc.isoformat())
             if key in seen:
