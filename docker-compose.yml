@@ -27,6 +27,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql://postgres:admin123@db:5432/muallim
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./backend:/app
       - ./backend/media:/app/media
