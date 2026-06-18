@@ -11,6 +11,7 @@ export interface RegisterPayload {
   password2: string;
   first_name?: string;
   last_name?: string;
+  timezone?: string;
 }
 
 export interface LoginPayload {
@@ -91,11 +92,11 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
 }
 
 // Google sign-in with id_token
-export async function googleAuth(idToken: string): Promise<AuthResponse> {
+export async function googleAuth(idToken: string, timezone?: string): Promise<AuthResponse> {
   const res = await fetch(`${API_URL}/auth/google/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_token: idToken }),
+    body: JSON.stringify({ id_token: idToken, timezone }),
   });
   if (!res.ok) {
     const data = await res.json();
