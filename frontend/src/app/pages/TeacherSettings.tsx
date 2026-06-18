@@ -110,6 +110,19 @@ export function TeacherSettings() {
       return;
     }
 
+    if (skills.length === 0) {
+      setSaveError('Please add at least one skill / subject under the Skills & Expertise section.');
+      return;
+    }
+    if (tags.length === 0) {
+      setSaveError('Please add at least one tag / language under the Skills & Expertise section.');
+      return;
+    }
+    if (!form.bio.trim()) {
+      setSaveError('Please write a brief bio describing your teaching experience.');
+      return;
+    }
+
     const payload = {
       bio: form.bio,
       headline: form.headline || 'Tutor',
