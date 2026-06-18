@@ -164,6 +164,83 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
+    @action(detail=False, methods=['get'], url_path='admin/users', permission_classes=[IsAuthenticated])
+    def admin_users(self, request):
+        """Admin: list all users with their profile info"""
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        from django.contrib.auth.models import User as AuthUser
+        users = AuthUser.objects.all().select_related('profile').order_by('-date_joined')
+        data = []
+        for u in users:
+            prof = getattr(u, 'profile', None)
+            avatar_url = None
+            if prof and prof.profile_picture:
+                avatar_url = request.build_absolute_uri(prof.profile_picture.url)
+            data.append({
+                'id': u.id,
+                'username': u.username,
+                'email': u.email,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'name': u.get_full_name() or u.username,
+                'is_staff': u.is_staff,
+                'is_superuser': u.is_superuser,
+                'is_active': u.is_active,
+                'date_joined': u.date_joined.isoformat(),
+                'user_type': prof.user_type if prof else 'student',
+                'email_verified': prof.email_verified if prof else False,
+                'is_suspended': prof.is_suspended if prof else False,
+                'avatar': avatar_url or 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format',
+                'timezone': prof.timezone if prof else 'Asia/Dubai',
+            })
+        return Response(data)
+
+    @action(detail=False, methods=['post'], url_path='admin/suspend', permission_classes=[IsAuthenticated])
+    def admin_suspend(self, request):
+        """Admin: suspend a user"""
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({'detail': 'user_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from django.contrib.auth.models import User as AuthUser
+        from django.shortcuts import get_object_or_404
+        target_user = get_object_or_404(AuthUser, pk=user_id)
+        
+        # Prevent suspending yourself or other admins
+        if target_user == request.user:
+            return Response({'detail': 'Cannot suspend yourself'}, status=status.HTTP_400_BAD_REQUEST)
+        if target_user.is_staff or target_user.is_superuser:
+            return Response({'detail': 'Cannot suspend admin users'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        profile.is_suspended = True
+        profile.save()
+        return Response({'detail': 'User suspended', 'is_suspended': True})
+
+    @action(detail=False, methods=['post'], url_path='admin/unsuspend', permission_classes=[IsAuthenticated])
+    def admin_unsuspend(self, request):
+        """Admin: unsuspend a user"""
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({'detail': 'user_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from django.contrib.auth.models import User as AuthUser
+        from django.shortcuts import get_object_or_404
+        target_user = get_object_or_404(AuthUser, pk=user_id)
+        
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        profile.is_suspended = False
+        profile.save()
+        return Response({'detail': 'User unsuspended', 'is_suspended': False})
+
 
 class BookingViewSet(rf_viewsets.ModelViewSet):
     """ViewSet for bookings. Creation blocked for unverified or suspended users."""
@@ -176,6 +253,15 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
         qs = Booking.objects.select_related('teacher__user', 'student')
         if user.is_staff or user.is_superuser:
             return qs
+        
+        role = self.request.query_params.get('role')
+        if role == 'student':
+            return qs.filter(student=user)
+        elif role == 'teacher':
+            if hasattr(user, 'teacher_profile'):
+                return qs.filter(teacher__user=user)
+            return qs.none()
+
         if hasattr(user, 'teacher_profile'):
             from django.db.models import Q
             return qs.filter(Q(teacher__user=user) | Q(student=user))
