@@ -68,11 +68,25 @@ export function AdminPanel() {
 
   const approve = async (id: string) => {
     const token = localStorage.getItem('muallim_access_token'); if (!token) return;
-    try { await approveTeacher(token, id); setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as AppStatus } : a)); if (selectedApp?.id === id) setSelectedApp(p => p ? { ...p, status: 'approved' } : null); } catch {}
+    try {
+      await approveTeacher(token, id);
+      setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'approved' as AppStatus } : a));
+      if (selectedApp?.id === id) setSelectedApp(p => p ? { ...p, status: 'approved' } : null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to approve teacher');
+    }
   };
   const reject = async (id: string, reason: string) => {
     const token = localStorage.getItem('muallim_access_token'); if (!token) return;
-    try { await rejectTeacher(token, id, reason); setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' as AppStatus, rejectionReason: reason } : a)); if (selectedApp?.id === id) setSelectedApp(p => p ? { ...p, status: 'rejected', rejectionReason: reason } : null); setShowRejectDialog(null); setRejectionReason(''); } catch {}
+    try {
+      await rejectTeacher(token, id, reason);
+      setApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'rejected' as AppStatus, rejectionReason: reason } : a));
+      if (selectedApp?.id === id) setSelectedApp(p => p ? { ...p, status: 'rejected', rejectionReason: reason } : null);
+      setShowRejectDialog(null);
+      setRejectionReason('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to reject teacher');
+    }
   };
   const toggleSuspend = async (userId: number, suspended: boolean) => {
     const token = localStorage.getItem('muallim_access_token'); if (!token) return;

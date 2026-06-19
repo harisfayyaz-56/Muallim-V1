@@ -266,3 +266,53 @@ class UserManagementTests(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('cannot book a session with yourself', response.data['teacher_id'][0].lower())
+
+    def test_admin_can_approve_and_reject_teacher(self):
+        # Create a pending teacher application
+        pending_teacher_user = User.objects.create_user(
+            username='pending_teacher',
+            email='pending@example.com',
+            password='password123'
+        )
+        UserProfile.objects.create(
+            user=pending_teacher_user,
+            user_type='teacher',
+            email_verified=True,
+            timezone='Asia/Dubai'
+        )
+        pending_teacher = Teacher.objects.create(
+            user=pending_teacher_user,
+            hourly_rate=120.0,
+            status='pending',
+            qualifications='Degree',
+            experience_level='1-2',
+            subjects='English',
+            languages='English'
+        )
+
+        # 1. Non-staff try to approve/reject -> forbidden
+        self.client.force_authenticate(user=self.student_user)
+        approve_url = f'/api/teacher/{pending_teacher.id}/approve/'
+        reject_url = f'/api/teacher/{pending_teacher.id}/reject/'
+        
+        response = self.client.post(approve_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        
+        response = self.client.post(reject_url, {'reason': 'Insufficient bio'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Staff can approve/reject
+        self.client.force_authenticate(user=self.admin_user)
+        
+        # Test reject first
+        response = self.client.post(reject_url, {'reason': 'Insufficient bio'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pending_teacher.refresh_from_db()
+        self.assertEqual(pending_teacher.status, 'rejected')
+        self.assertEqual(pending_teacher.rejection_reason, 'Insufficient bio')
+
+        # Test approve
+        response = self.client.post(approve_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pending_teacher.refresh_from_db()
+        self.assertEqual(pending_teacher.status, 'approved')

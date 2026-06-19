@@ -370,7 +370,8 @@ export const approveTeacher = async (token: string, teacherId: string): Promise<
   });
 
   if (!response.ok) {
-    throw new Error('Failed to approve teacher');
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to approve teacher');
   }
 
   return response.json();
@@ -394,7 +395,8 @@ export const rejectTeacher = async (
   });
 
   if (!response.ok) {
-    throw new Error('Failed to reject teacher');
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to reject teacher');
   }
 
   return response.json();
