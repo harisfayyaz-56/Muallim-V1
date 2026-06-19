@@ -64,7 +64,6 @@ class Teacher(models.Model):
     SESSION_DURATION_CHOICES = (
         ('30', '30 minutes'),
         ('60', '60 minutes'),
-        ('both', 'Both 30 and 60 minutes'),
     )
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='teacher_profile')
@@ -86,7 +85,7 @@ class Teacher(models.Model):
     students_count = models.IntegerField(default=0)
     lessons_completed = models.IntegerField(default=0)
     session_duration = models.CharField(
-        max_length=10, choices=SESSION_DURATION_CHOICES, default='both',
+        max_length=10, choices=SESSION_DURATION_CHOICES, default='60',
         help_text="Allowed session durations for booking"
     )
     created_at = models.DateTimeField(auto_now_add=True)

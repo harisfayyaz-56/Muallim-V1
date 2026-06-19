@@ -18,19 +18,30 @@ def get_teacher_timezone(teacher):
 
 
 def grid_to_availability_rows(grid):
-    """Convert UI weekly grid to DB row dicts (1-hour blocks)."""
+    """Convert UI weekly grid to DB row dicts."""
     rows = []
-    for day_ui, times in (grid or {}).items():
+    for day_ui, slots in (grid or {}).items():
         day = DAY_UI_TO_DB.get(day_ui)
         if not day:
             continue
-        for t in sorted(set(times)):
-            parts = t.split(':')
-            h = int(parts[0])
-            m = int(parts[1]) if len(parts) > 1 else 0
-            start = time(h, m)
-            end_h = h + 1
-            end = time(end_h, m) if end_h < 24 else time(23, 59, 59)
+        for slot in slots:
+            if isinstance(slot, dict):
+                start_str = slot.get('start')
+                end_str = slot.get('end')
+            else:
+                # string format: default 1-hour duration for backward compatibility
+                start_str = slot
+                parts = start_str.split(':')
+                h = int(parts[0])
+                m = int(parts[1]) if len(parts) > 1 else 0
+                end_str = f"{h+1:02d}:{m:02d}" if h+1 < 24 else "23:59"
+            
+            start_parts = start_str.split(':')
+            start = time(int(start_parts[0]), int(start_parts[1]))
+            
+            end_parts = end_str.split(':')
+            end = time(int(end_parts[0]), int(end_parts[1]))
+            
             rows.append({
                 'day_of_week': day,
                 'start_time': start,
@@ -48,9 +59,10 @@ def availabilities_to_grid(availabilities):
             continue
         day_ui = DAY_DB_TO_UI.get(av.day_of_week)
         if day_ui:
-            grid[day_ui].append(av.start_time.strftime('%H:%M'))
-    for day in grid:
-        grid[day].sort()
+            grid[day_ui].append({
+                'start': av.start_time.strftime('%H:%M'),
+                'end': av.end_time.strftime('%H:%M'),
+            })
     return grid
 
 
@@ -59,9 +71,12 @@ def availabilities_to_slots_by_day(availabilities):
     result = {day: [] for day in WEEKDAYS}
     for av in availabilities:
         if av.is_available:
-            result[av.day_of_week].append(av.start_time.strftime('%H:%M'))
+            result[av.day_of_week].append({
+                'start': av.start_time.strftime('%H:%M'),
+                'end': av.end_time.strftime('%H:%M'),
+            })
     for day in result:
-        result[day].sort()
+        result[day] = sorted(result[day], key=lambda s: s['start'])
     return result
 
 
@@ -83,18 +98,42 @@ def convert_weekly_slots_to_timezone(slots_by_day, teacher_tz_name, viewer_tz_na
     viewer_tz = ZoneInfo(viewer_tz_name)
     result = {day: [] for day in WEEKDAYS}
 
-    for day_name, times in slots_by_day.items():
+    for day_name, slots in slots_by_day.items():
         ref_date = _reference_date_for_weekday(day_name)
-        for t in times:
-            parts = t.split(':')
+        for slot in slots:
+            if isinstance(slot, dict):
+                start_str = slot['start']
+                end_str = slot['end']
+            else:
+                start_str = slot
+                parts = start_str.split(':')
+                h = int(parts[0])
+                m = int(parts[1]) if len(parts) > 1 else 0
+                end_str = f"{h+1:02d}:{m:02d}" if h+1 < 24 else "23:59"
+            
+            # Convert start time
+            parts = start_str.split(':')
             h, m = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
             dt_teacher = datetime(ref_date.year, ref_date.month, ref_date.day, h, m, tzinfo=teacher_tz)
             dt_viewer = dt_teacher.astimezone(viewer_tz)
             viewer_day = WEEKDAYS[dt_viewer.weekday()]
-            result[viewer_day].append(dt_viewer.strftime('%H:%M'))
+            
+            # Convert end time
+            e_parts = end_str.split(':')
+            e_h, e_m = int(e_parts[0]), int(e_parts[1]) if len(e_parts) > 1 else 0
+            e_dt_teacher = datetime(ref_date.year, ref_date.month, ref_date.day, e_h, e_m, tzinfo=teacher_tz)
+            if e_dt_teacher <= dt_teacher:
+                e_dt_teacher += timedelta(days=1)
+            e_dt_viewer = e_dt_teacher.astimezone(viewer_tz)
+            
+            result[viewer_day].append({
+                'start': dt_viewer.strftime('%H:%M'),
+                'end': e_dt_viewer.strftime('%H:%M'),
+            })
 
+    # Sort slots by start time
     for day in result:
-        result[day] = sorted(set(result[day]))
+        result[day] = sorted(result[day], key=lambda s: s['start'])
     return result
 
 
@@ -102,15 +141,6 @@ def _duration_allowed(teacher_session_duration, requested_duration):
     if teacher_session_duration == 'both':
         return requested_duration in (30, 60)
     return str(requested_duration) == teacher_session_duration
-
-
-def _get_candidate_starts(hour, session_duration, requested_duration):
-    """Return (hour, minute) start times for a given hour block."""
-    if not _duration_allowed(session_duration, requested_duration):
-        return []
-    if requested_duration == 30:
-        return [(hour, 0), (hour, 30)]
-    return [(hour, 0)]
 
 
 def _bookings_overlap(slot_start, slot_end, bookings):
@@ -129,7 +159,6 @@ def generate_slots_for_date(teacher, target_date, duration_minutes, viewer_timez
     teacher_tz_name = get_teacher_timezone(teacher)
     teacher_tz = ZoneInfo(teacher_tz_name)
     viewer_tz = ZoneInfo(viewer_timezone)
-    session_duration = getattr(teacher, 'session_duration', 'both') or 'both'
 
     target_weekday_idx = target_date.weekday()
     candidate_indices = [(target_weekday_idx - 1) % 7, target_weekday_idx, (target_weekday_idx + 1) % 7]
@@ -149,34 +178,42 @@ def generate_slots_for_date(teacher, target_date, duration_minutes, viewer_timez
             diff = -1
         
         slot_date_teacher = target_date + timedelta(days=diff)
+        
+        # Exact start and duration check from availability
+        h, m = av.start_time.hour, av.start_time.minute
+        
+        # Calculate slot duration from the database availability row
+        av_duration = (datetime.combine(slot_date_teacher.date(), av.end_time) - datetime.combine(slot_date_teacher.date(), av.start_time)).seconds // 60
+        
+        if av_duration != duration_minutes:
+            continue
 
-        for h, m in _get_candidate_starts(av.start_time.hour, session_duration, duration_minutes):
-            dt_teacher = datetime(slot_date_teacher.year, slot_date_teacher.month, slot_date_teacher.day, h, m, tzinfo=teacher_tz)
-            dt_utc = dt_teacher.astimezone(ZoneInfo('UTC'))
-            slot_end = dt_utc + timedelta(minutes=duration_minutes)
+        dt_teacher = datetime(slot_date_teacher.year, slot_date_teacher.month, slot_date_teacher.day, h, m, tzinfo=teacher_tz)
+        dt_utc = dt_teacher.astimezone(ZoneInfo('UTC'))
+        slot_end = dt_utc + timedelta(minutes=duration_minutes)
 
-            if dt_utc < django_tz.now():
-                continue
+        if dt_utc < django_tz.now():
+            continue
 
-            is_booked = _bookings_overlap(dt_utc, slot_end, active_bookings)
-            if is_booked:
-                continue
+        is_booked = _bookings_overlap(dt_utc, slot_end, active_bookings)
+        if is_booked:
+            continue
 
-            dt_viewer = dt_teacher.astimezone(viewer_tz)
-            if dt_viewer.date() != target_date:
-                continue
+        dt_viewer = dt_teacher.astimezone(viewer_tz)
+        if dt_viewer.date() != target_date:
+            continue
 
-            time_str = dt_viewer.strftime('%H:%M')
-            key = (time_str, dt_utc.isoformat())
-            if key in seen:
-                continue
-            seen.add(key)
+        time_str = dt_viewer.strftime('%H:%M')
+        key = (time_str, dt_utc.isoformat())
+        if key in seen:
+            continue
+        seen.add(key)
 
-            slots.append({
-                'time': time_str,
-                'utc': dt_utc.isoformat(),
-                'available': True,
-            })
+        slots.append({
+            'time': time_str,
+            'utc': dt_utc.isoformat(),
+            'available': True,
+        })
 
     slots.sort(key=lambda s: s['utc'])
     return slots
@@ -201,16 +238,20 @@ def validate_booking_slot(teacher, scheduled_date, duration_minutes):
     day_of_week = WEEKDAYS[dt_teacher.weekday()]
     start_time = dt_teacher.time().replace(second=0, microsecond=0)
 
+    # Match exact slot by start time and duration
     availabilities = teacher.availabilities.filter(
-        day_of_week=day_of_week, is_available=True, start_time__hour=start_time.hour
+        day_of_week=day_of_week, is_available=True, start_time=start_time
     )
-    if not availabilities.exists():
-        raise ValueError('Selected time is not within teacher availability')
+    
+    matching_av = None
+    for av in availabilities:
+        av_duration = (datetime.combine(dt_teacher.date(), av.end_time) - datetime.combine(dt_teacher.date(), av.start_time)).seconds // 60
+        if av_duration == duration_minutes:
+            matching_av = av
+            break
 
-    if duration_minutes == 30 and start_time.minute not in (0, 30):
-        raise ValueError('Invalid 30-minute slot time')
-    if duration_minutes == 60 and start_time.minute != 0:
-        raise ValueError('Invalid 60-minute slot time')
+    if not matching_av:
+        raise ValueError('Selected time is not within teacher availability')
 
     slot_end = scheduled_date + timedelta(minutes=duration_minutes)
     active = teacher.bookings.exclude(status__in=['cancelled', 'no_show'])

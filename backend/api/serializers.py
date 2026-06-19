@@ -89,8 +89,8 @@ class BookingSerializer(rf_serializers.ModelSerializer):
 
 
 class TeacherAvailabilityUpdateSerializer(rf_serializers.Serializer):
-    grid = rf_serializers.DictField(child=rf_serializers.ListField(child=rf_serializers.CharField()), required=False)
-    session_duration = rf_serializers.ChoiceField(choices=['30', '60', 'both'], required=False)
+    grid = rf_serializers.DictField(required=False)
+    session_duration = rf_serializers.ChoiceField(choices=['30', '60'], required=False)
 
 
 
