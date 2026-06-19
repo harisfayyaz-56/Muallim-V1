@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { AlertCircle, Upload } from 'lucide-react';
 
@@ -22,6 +22,10 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPreview(currentAvatarUrl || null);
+  }, [currentAvatarUrl]);
 
   // Validation constants
   const MAX_SIZE = 5 * 1024 * 1024; // 5MB
