@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { Calendar, DollarSign, Users, Clock, Star, Settings, ExternalLink, CheckCircle, AlertCircle, TrendingUp, ArrowRight } from 'lucide-react';
+import { Calendar, DollarSign, Users, Clock, Star, Settings, ExternalLink, CheckCircle, AlertCircle, TrendingUp, ArrowRight, XCircle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getProfile, getTeacherProfile } from '../../api/profile';
@@ -145,6 +145,11 @@ export function TeacherDashboard() {
                   <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/15 border border-emerald-500/20 rounded-xl">
                     <CheckCircle className="w-4 h-4 text-emerald-400" />
                     <span className="text-emerald-400 text-xs" style={{ fontWeight: 600 }}>Profile Approved</span>
+                  </div>
+                ) : profileStatus === 'rejected' ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-red-500/15 border border-red-500/20 rounded-xl">
+                    <XCircle className="w-4 h-4 text-red-400" />
+                    <span className="text-red-400 text-xs" style={{ fontWeight: 600 }}>Approval Rejected</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 px-3 py-2 bg-[#C8962A]/15 border border-[#C8962A]/20 rounded-xl">
