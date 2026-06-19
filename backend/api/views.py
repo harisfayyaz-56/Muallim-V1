@@ -595,8 +595,9 @@ class TeacherViewSet(viewsets.ModelViewSet):
         start_dt = datetime.combine(target_date - timedelta(days=1), time.min, tzinfo=ZoneInfo('UTC'))
         end_dt = datetime.combine(target_date + timedelta(days=2), time.max, tzinfo=ZoneInfo('UTC'))
 
-        active_bookings = teacher.bookings.filter(
-            status__in=['pending', 'confirmed'],
+        active_bookings = teacher.bookings.exclude(
+            status__in=['cancelled', 'no_show']
+        ).filter(
             scheduled_date__range=(start_dt, end_dt),
         )
         slots = generate_slots_for_date(teacher, target_date, duration, viewer_tz, active_bookings)

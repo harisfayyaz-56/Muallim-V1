@@ -213,6 +213,6 @@ def validate_booking_slot(teacher, scheduled_date, duration_minutes):
         raise ValueError('Invalid 60-minute slot time')
 
     slot_end = scheduled_date + timedelta(minutes=duration_minutes)
-    active = teacher.bookings.filter(status__in=['pending', 'confirmed'])
+    active = teacher.bookings.exclude(status__in=['cancelled', 'no_show'])
     if _bookings_overlap(scheduled_date, slot_end, active):
         raise ValueError('This slot has already been booked')
