@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { Save, Plus, X, ChevronLeft, AlertCircle, CheckCircle } from 'lucide-react';
+import { Save, Plus, X, ChevronLeft, AlertCircle, CheckCircle, ArrowRight, ChevronDown, Check, Trash2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getTeacherProfile, createTeacherProfile, updateTeacherProfile, getProfile } from '../../api/profile';
@@ -15,8 +15,10 @@ const INITIAL_AVAILABILITY: Record<string, string[]> = { ...EMPTY_GRID };
 const SKILL_SUGGESTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Arabic', 'Programming', 'Python', 'JavaScript', 'React', 'Business', 'Finance', 'IELTS', 'SAT', 'IGCSE', 'A-Level', 'IB', 'Guitar', 'Piano', 'Quran'];
 
 export function TeacherSettings() {
-  const [activeTab, setActiveTab] = useState<'profile' | 'availability' | 'pricing'>('profile');
-  const [availability, setAvailability] = useState(INITIAL_AVAILABILITY);
+  const [activeTab, setActiveTab] = useState<'profile' | 'pricing' | 'availability'>('profile');
+  const [availability, setAvailability] = useState<Record<string, { start: string; end: string }[]>>({
+    Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+  });
   const [skills, setSkills] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [newSkill, setNewSkill] = useState('');
@@ -29,8 +31,73 @@ export function TeacherSettings() {
   const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
   const [rejectionReason, setRejectionReason] = useState('');
   const [hasTeacherProfile, setHasTeacherProfile] = useState(false);
-  const [sessionDuration, setSessionDuration] = useState<30 | 60 | 'both'>(60);
+  const [sessionDuration, setSessionDuration] = useState<30 | 60>(60);
   const [teacherTimezone, setTeacherTimezone] = useState('Asia/Dubai');
+  
+  // Custom availability state variables
+  const [selectedSettingsDay, setSelectedSettingsDay] = useState('Mon');
+  const [newStartTime, setNewStartTime] = useState('07:00');
+  const [availabilityError, setAvailabilityError] = useState('');
+  const [isSkillsOpen, setIsSkillsOpen] = useState(false);
+
+  const getEndTime = (startStr: string, durationMin: number) => {
+    if (!startStr) return '';
+    const [h, m] = startStr.split(':').map(Number);
+    const date = new Date();
+    date.setHours(h, m, 0, 0);
+    const endDate = new Date(date.getTime() + durationMin * 60 * 1000);
+    const endH = String(endDate.getHours()).padStart(2, '0');
+    const endM = String(endDate.getMinutes()).padStart(2, '0');
+    return `${endH}:${endM}`;
+  };
+
+  const checkOverlap = (day: string, start: string, end: string) => {
+    const slots = availability[day] || [];
+    const toMinutes = (timeStr: string) => {
+      const [h, m] = timeStr.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const newStart = toMinutes(start);
+    let newEnd = toMinutes(end);
+    if (newEnd <= newStart) {
+      newEnd += 24 * 60;
+    }
+    for (const slot of slots) {
+      const sStart = toMinutes(slot.start);
+      let sEnd = toMinutes(slot.end);
+      if (sEnd <= sStart) {
+        sEnd += 24 * 60;
+      }
+      if (newStart < sEnd && newEnd > sStart) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const addSlot = () => {
+    if (!newStartTime) return;
+    const end = getEndTime(newStartTime, sessionDuration);
+    if (checkOverlap(selectedSettingsDay, newStartTime, end)) {
+      setAvailabilityError(`This slot overlaps with an existing slot on ${selectedSettingsDay}.`);
+      return;
+    }
+    setAvailabilityError('');
+    setAvailability(prev => {
+      const daySlots = prev[selectedSettingsDay] || [];
+      const newSlot = { start: newStartTime, end };
+      const updated = [...daySlots, newSlot].sort((a, b) => a.start.localeCompare(b.start));
+      return { ...prev, [selectedSettingsDay]: updated };
+    });
+  };
+
+  const deleteSlot = (day: string, index: number) => {
+    setAvailability(prev => {
+      const daySlots = prev[day] || [];
+      const updated = daySlots.filter((_, i) => i !== index);
+      return { ...prev, [day]: updated };
+    });
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
@@ -58,33 +125,45 @@ export function TeacherSettings() {
           setRejectionReason(tProfile.rejection_reason || '');
           if (tProfile.session_duration) {
             const sd = tProfile.session_duration;
-            setSessionDuration(sd === '30' ? 30 : sd === '60' ? 60 : 'both');
+            setSessionDuration(sd === '30' ? 30 : 60);
           }
         }
         try {
           const avail = await getMyAvailability(token);
-          if (avail.grid) setAvailability(avail.grid);
+          if (avail.grid) {
+            const mappedGrid: Record<string, { start: string; end: string }[]> = {
+              Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+            };
+            Object.entries(avail.grid).forEach(([day, slots]: [string, any]) => {
+              if (Array.isArray(slots)) {
+                mappedGrid[day] = slots.map((s: any) => {
+                  if (typeof s === 'string') {
+                    const parts = s.split(':');
+                    const h = parseInt(parts[0], 10);
+                    const m = parts[1] || '00';
+                    const endH = h + 1;
+                    const endHStr = String(endH).padStart(2, '0');
+                    return { start: s, end: `${endHStr}:${m}` };
+                  }
+                  return s;
+                });
+              }
+            });
+            setAvailability(mappedGrid);
+          }
           if (avail.timezone) setTeacherTimezone(avail.timezone);
           if (avail.session_duration) {
             const sd = avail.session_duration;
-            setSessionDuration(sd === '30' ? 30 : sd === '60' ? 60 : 'both');
+            setSessionDuration(sd === '30' ? 30 : 60);
           }
         } catch {
-          // Teacher may not have availability yet
+          // Inner catch
         }
       } catch {
         setHasTeacherProfile(false);
       }
     })();
   }, []);
-
-  const toggleSlot = (day: string, time: string) => {
-    setAvailability(prev => {
-      const slots = prev[day] || [];
-      const exists = slots.includes(time);
-      return { ...prev, [day]: exists ? slots.filter(s => s !== time) : [...slots, time].sort() };
-    });
-  };
 
   const handleSave = async () => {
     const token = localStorage.getItem('muallim_access_token');
@@ -97,10 +176,10 @@ export function TeacherSettings() {
       }
       try {
         setSaveError('');
-        const sd = sessionDuration === 30 ? '30' : sessionDuration === 60 ? '60' : 'both';
+        const sd = sessionDuration === 30 ? '30' : '60';
         await updateMyAvailability(token, {
           grid: availability as any,
-          session_duration: sd as '30' | '60' | 'both',
+          session_duration: sd as '30' | '60',
         });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -150,6 +229,17 @@ export function TeacherSettings() {
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      
+      // Auto transition to next tab
+      if (activeTab === 'profile') {
+        setTimeout(() => {
+          setActiveTab('pricing');
+        }, 800);
+      } else if (activeTab === 'pricing') {
+        setTimeout(() => {
+          setActiveTab('availability');
+        }, 800);
+      }
     } catch (err: any) {
       setSaveError(err.message || 'Failed to save teacher profile changes');
     }
@@ -197,7 +287,7 @@ export function TeacherSettings() {
         {/* Tabs */}
         <div className="bg-[#0D1B2A] border-t border-white/10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-1">
-            {(['profile', 'availability', 'pricing'] as const).map(tab => (
+            {(['profile', 'pricing', 'availability'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -276,24 +366,45 @@ export function TeacherSettings() {
                         </span>
                       ))}
                     </div>
-                    <div className="flex gap-2">
-                      <input
-                        value={newSkill}
-                        onChange={e => setNewSkill(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && newSkill.trim()) { setSkills([...skills, newSkill.trim()]); setNewSkill(''); }}}
-                        placeholder="Add a skill..."
-                        list="skills-list"
-                        className="flex-1 px-4 py-2 rounded-xl border border-[rgba(13,27,42,0.15)] text-sm text-[#0D1B2A] focus:outline-none focus:border-[#C8962A] transition-colors"
-                      />
-                      <datalist id="skills-list">
-                        {SKILL_SUGGESTIONS.map(s => <option key={s} value={s} />)}
-                      </datalist>
+                    <div className="relative">
                       <button
-                        onClick={() => { if (newSkill.trim()) { setSkills([...skills, newSkill.trim()]); setNewSkill(''); }}}
-                        className="p-2 bg-[#0D1B2A] text-white rounded-xl hover:bg-[#1a2d45] transition-colors"
+                        type="button"
+                        onClick={() => setIsSkillsOpen(!isSkillsOpen)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-sm text-[#0D1B2A] hover:border-[#C8962A] transition-colors"
                       >
-                        <Plus className="w-4 h-4" />
+                        <span className="text-[#9CA3AF]">Select skills...</span>
+                        <ChevronDown className="w-4 h-4 text-[#9CA3AF]" />
                       </button>
+                      
+                      {isSkillsOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setIsSkillsOpen(false)} />
+                          <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[rgba(13,27,42,0.08)] bg-white shadow-xl z-20 py-1.5">
+                            {SKILL_SUGGESTIONS.map(s => {
+                              const alreadyAdded = skills.includes(s);
+                              return (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  onClick={() => {
+                                    if (alreadyAdded) {
+                                      setSkills(skills.filter(x => x !== s));
+                                    } else {
+                                      setSkills([...skills, s]);
+                                    }
+                                  }}
+                                  className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center justify-between ${
+                                    alreadyAdded ? 'bg-[#F8F6F1] text-[#C8962A] font-semibold' : 'text-[#0D1B2A] hover:bg-[#F8F6F1]'
+                                  }`}
+                                >
+                                  <span>{s}</span>
+                                  {alreadyAdded && <Check className="w-4 h-4 text-[#C8962A]" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -340,82 +451,7 @@ export function TeacherSettings() {
                   </div>
                 )}
                 <button onClick={handleSave} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`} style={{ fontWeight: 600 }}>
-                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> {profileStatus === 'rejected' ? 'Resubmit for Review' : 'Save Profile'}</>}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'availability' && (
-            <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] overflow-hidden">
-              <div className="px-6 py-5 border-b border-[rgba(13,27,42,0.06)] flex items-center justify-between">
-                <div>
-                  <h2 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Weekly Availability</h2>
-                  <p className="text-[#9CA3AF] text-xs mt-0.5">Click any slot to toggle it. Students will see and book from these slots.</p>
-                </div>
-                <div className="flex gap-2 bg-[#F8F6F1] rounded-xl p-1">
-                  {[30, 60, 'both'].map(d => (
-                    <button
-                      key={d}
-                      onClick={() => setSessionDuration(d as 30 | 60 | 'both')}
-                      className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${sessionDuration === d ? 'bg-white text-[#0D1B2A] shadow-sm' : 'text-[#9CA3AF]'}`}
-                      style={{ fontWeight: sessionDuration === d ? 600 : 400 }}
-                    >
-                      {d === 'both' ? 'Both' : `${d}min`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[600px]">
-                  <thead className="bg-[#F8F6F1]">
-                    <tr>
-                      <th className="w-20 px-4 py-3 text-left text-xs text-[#9CA3AF]">Time ({getTimezoneAbbr(teacherTimezone)})</th>
-                      {DAYS.map(d => (
-                        <th key={d} className="px-2 py-3 text-center text-xs text-[#0D1B2A]" style={{ fontWeight: 600 }}>{d}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {TIME_SLOTS.map((time, i) => (
-                      <tr key={time} className={`border-t border-[rgba(13,27,42,0.04)] ${i % 2 === 0 ? '' : 'bg-[#FAFAF8]'}`}>
-                        <td className="px-4 py-2 text-xs text-[#9CA3AF]">{time}</td>
-                        {DAYS.map(day => {
-                          const active = (availability[day] || []).includes(time);
-                          return (
-                            <td key={day} className="px-2 py-1.5 text-center">
-                              <button
-                                onClick={() => toggleSlot(day, time)}
-                                className={`w-8 h-8 rounded-lg mx-auto flex items-center justify-center transition-all duration-150 ${
-                                  active
-                                    ? 'bg-[#C8962A] hover:bg-[#b8851f] shadow-sm'
-                                    : 'bg-[#F8F6F1] hover:bg-[#F0ECE4] border border-transparent hover:border-[rgba(13,27,42,0.1)]'
-                                }`}
-                              >
-                                {active && <div className="w-2.5 h-2.5 bg-white rounded-full" />}
-                              </button>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {saveError && activeTab === 'availability' && (
-                <div className="px-6 py-3 text-red-600 bg-red-50 border-t border-red-200 text-sm">
-                  {saveError}
-                </div>
-              )}
-              <div className="px-6 py-4 bg-[#F8F6F1] border-t border-[rgba(13,27,42,0.06)] flex items-center justify-between">
-                <div className="flex items-center gap-4 text-xs text-[#9CA3AF]">
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-[#C8962A]" /> Available</div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-[#F8F6F1] border border-[rgba(13,27,42,0.1)]" /> Unavailable</div>
-                </div>
-                <button onClick={handleSave} className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`} style={{ fontWeight: 600 }}>
-                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> Save Schedule</>}
+                  {saved ? '✓ Saved' : <>{profileStatus === 'rejected' ? <><Save className="w-4 h-4" /> Resubmit for Review</> : <><ArrowRight className="w-4 h-4" /> Next</>}</>}
                 </button>
               </div>
             </div>
@@ -471,7 +507,186 @@ export function TeacherSettings() {
                 </div>
 
                 <button onClick={handleSave} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`} style={{ fontWeight: 600 }}>
-                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> Save Pricing</>}
+                  {saved ? '✓ Saved' : <><ArrowRight className="w-4 h-4" /> Next</>}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'availability' && (
+            <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] overflow-hidden">
+              <div className="px-6 py-5 border-b border-[rgba(13,27,42,0.06)] flex items-center justify-between">
+                <div>
+                  <h2 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Weekly Availability</h2>
+                  <p className="text-[#9CA3AF] text-xs mt-0.5">Manage your recurring session availability slots.</p>
+                </div>
+                <div className="flex gap-2 bg-[#F8F6F1] rounded-xl p-1">
+                  {[30, 60].map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setSessionDuration(d as 30 | 60)}
+                      className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${sessionDuration === d ? 'bg-white text-[#0D1B2A] shadow-sm' : 'text-[#9CA3AF]'}`}
+                      style={{ fontWeight: sessionDuration === d ? 600 : 400 }}
+                    >
+                      {`${d}min`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Weekday Selector Row */}
+                <div className="flex gap-1.5 overflow-x-auto pb-2 border-b border-[rgba(13,27,42,0.04)]">
+                  {DAYS.map(day => {
+                    const daySlots = availability[day] || [];
+                    const activeCount = daySlots.filter((slot: any) => {
+                      if (typeof slot === 'string') return true;
+                      const [sh, sm] = slot.start.split(':').map(Number);
+                      const [eh, em] = slot.end.split(':').map(Number);
+                      const diff = (eh * 60 + em) - (sh * 60 + sm);
+                      return diff === sessionDuration;
+                    }).length;
+
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setSelectedSettingsDay(day)}
+                        className={`flex flex-col items-center min-w-[70px] px-3 py-2.5 rounded-xl transition-all ${
+                          selectedSettingsDay === day
+                            ? 'bg-[#0D1B2A] text-white shadow-sm'
+                            : 'bg-[#F8F6F1] text-[#6B7280] hover:bg-[#F0ECE4] hover:text-[#0D1B2A]'
+                        }`}
+                      >
+                        <span className="text-[10px] font-semibold tracking-wider uppercase">{day}</span>
+                        <span className="text-sm font-bold mt-1" style={{ fontFamily: 'Fraunces, serif' }}>
+                          {activeCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left Column: Add Slot Form */}
+                  <div className="bg-[#F8F6F1] rounded-2xl p-5 border border-[rgba(13,27,42,0.05)]">
+                    <h3 className="text-sm text-[#0D1B2A] font-semibold mb-4 flex items-center gap-1.5">
+                      <Plus className="w-4 h-4 text-[#C8962A]" /> Add {sessionDuration}min Slot for {selectedSettingsDay}
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs text-[#6B7280] mb-1.5" style={{ fontWeight: 500 }}>Start Time</label>
+                        <input
+                          type="time"
+                          value={newStartTime}
+                          onChange={e => setNewStartTime(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-sm text-[#0D1B2A] focus:outline-none focus:border-[#C8962A]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs text-[#6B7280] mb-1.5" style={{ fontWeight: 500 }}>End Time (Auto-calculated)</label>
+                        <input
+                          type="text"
+                          value={getEndTime(newStartTime, sessionDuration)}
+                          disabled
+                          className="w-full px-3 py-2 rounded-xl border border-[rgba(13,27,42,0.08)] bg-white/50 text-sm text-[#9CA3AF] cursor-not-allowed"
+                        />
+                      </div>
+
+                      {availabilityError && (
+                        <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">
+                          {availabilityError}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={addSlot}
+                        className="w-full py-2 bg-[#0D1B2A] hover:bg-[#1a2d45] text-white text-xs font-semibold rounded-xl transition-colors"
+                      >
+                        Add to Schedule
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Existing Slots List */}
+                  <div>
+                    <h3 className="text-sm text-[#0D1B2A] font-semibold mb-4">
+                      Configured Slots ({selectedSettingsDay})
+                    </h3>
+
+                    {(() => {
+                      const daySlots = availability[selectedSettingsDay] || [];
+                      const filteredSlots = daySlots.filter((slot: any) => {
+                        if (typeof slot === 'string') return true;
+                        const [sh, sm] = slot.start.split(':').map(Number);
+                        const [eh, em] = slot.end.split(':').map(Number);
+                        const diff = (eh * 60 + em) - (sh * 60 + sm);
+                        return diff === sessionDuration;
+                      });
+
+                      if (filteredSlots.length === 0) {
+                        return (
+                          <div className="flex flex-col items-center justify-center py-10 border border-dashed border-[rgba(13,27,42,0.12)] rounded-2xl text-[#9CA3AF]">
+                            <p className="text-xs">No {sessionDuration}min slots defined for this day</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                          {daySlots.map((slot: any, idx: number) => {
+                            const isString = typeof slot === 'string';
+                            const start = isString ? slot : slot.start;
+                            const end = isString ? getEndTime(slot, sessionDuration) : slot.end;
+                            const [sh, sm] = start.split(':').map(Number);
+                            const [eh, em] = end.split(':').map(Number);
+                            const diff = (eh * 60 + em) - (sh * 60 + sm);
+                            
+                            if (diff !== sessionDuration) return null;
+
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between px-4 py-2.5 bg-white border border-[rgba(13,27,42,0.06)] rounded-xl hover:shadow-sm transition-all"
+                              >
+                                <span className="text-sm font-semibold text-[#0D1B2A] tabular-nums">
+                                  {start} – {end}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteSlot(selectedSettingsDay, idx)}
+                                  className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                  title="Delete Slot"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {saveError && activeTab === 'availability' && (
+                <div className="px-6 py-3 text-red-600 bg-red-50 border-t border-red-200 text-sm">
+                  {saveError}
+                </div>
+              )}
+              <div className="px-6 py-4 bg-[#F8F6F1] border-t border-[rgba(13,27,42,0.06)] flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`}
+                  style={{ fontWeight: 600 }}
+                >
+                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> Save Schedule</>}
                 </button>
               </div>
             </div>

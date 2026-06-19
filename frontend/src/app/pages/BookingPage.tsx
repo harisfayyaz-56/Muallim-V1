@@ -150,7 +150,14 @@ export function BookingPage() {
   const getAvailableSlots = (day: number) => {
     const d = new Date(year, month, day).getDay();
     const dayKey = SLOT_DAY_MAP[d];
-    return weeklySlots[dayKey] || [];
+    const rawSlots = weeklySlots[dayKey] || [];
+    return rawSlots.filter((slot: any) => {
+      if (typeof slot === 'string') return true;
+      const [sh, sm] = slot.start.split(':').map(Number);
+      const [eh, em] = slot.end.split(':').map(Number);
+      const diff = (eh * 60 + em) - (sh * 60 + sm);
+      return diff === duration;
+    });
   };
 
   const handlePayment = async () => {

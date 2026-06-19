@@ -19,5 +19,6 @@ export function mapProfileToTeacher(profile: TeacherProfile): any {
     sessionsCount: profile.lessons_completed || 0,
     hourlyRate: Number(profile.hourly_rate),
     joinedDate: new Date().toISOString(),
+    session_duration: profile.session_duration,
   };
 }

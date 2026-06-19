@@ -20,9 +20,10 @@ export function TeacherProfilePage() {
   const [selectedDay, setSelectedDay] = useState('monday');
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [duration, setDuration] = useState(60);
+  const [sessionDurations, setSessionDurations] = useState<number[]>([30, 60]);
   const [liked, setLiked] = useState(false);
   const [activeTab, setActiveTab] = useState<'about' | 'reviews' | 'availability'>('about');
-  const [slotsByDay, setSlotsByDay] = useState<Record<string, string[]>>({});
+  const [slotsByDay, setSlotsByDay] = useState<Record<string, any[]>>({});
   const [viewerTimezone, setViewerTimezone] = useState(DEFAULT_TIMEZONE);
   const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
 
@@ -31,7 +32,15 @@ export function TeacherProfilePage() {
     (async () => {
       try {
         const data = await getTeacher(id);
-        setTeacher(mapProfileToTeacher(data));
+        const mapped = mapProfileToTeacher(data);
+        setTeacher(mapped);
+        
+        const sd = mapped.session_duration || '60';
+        let durations = [30, 60];
+        if (sd === '30') durations = [30];
+        else if (sd === '60') durations = [60];
+        setSessionDurations(durations);
+        setDuration(durations.includes(60) ? 60 : 30);
       } catch (err) {
         console.error('Error fetching teacher profile:', err);
         setError('Failed to load teacher profile');
@@ -95,36 +104,28 @@ export function TeacherProfilePage() {
   const platformFee = Math.round(sessionPrice * (PLATFORM_FEE_PERCENT / 100));
   const total = sessionPrice + platformFee;
 
+  const getSlotsForDay = (day: string) => {
+    const rawSlots = slotsByDay[day] || [];
+    return rawSlots.filter((slot: any) => {
+      if (typeof slot === 'string') return true;
+      const [sh, sm] = slot.start.split(':').map(Number);
+      const [eh, em] = slot.end.split(':').map(Number);
+      const diff = (eh * 60 + em) - (sh * 60 + sm);
+      return diff === duration;
+    });
+  };
+
   const getDisplaySlots = () => {
     const rawSlots = slotsByDay[selectedDay] || [];
-    if (duration === 30) {
-      const expanded: string[] = [];
-      rawSlots.forEach(slot => {
-        const [h, m] = slot.split(':');
-        expanded.push(`${h}:${m}`);
-        if (m === '00') {
-          expanded.push(`${h}:30`);
-        } else if (m === '30') {
-          const nextHour = (parseInt(h) + 1) % 24;
-          const nextHourStr = String(nextHour).padStart(2, '0');
-          expanded.push(`${nextHourStr}:00`);
-        }
-      });
-      return Array.from(new Set(expanded)).sort();
-    } else if (duration === 90) {
-      const filtered: string[] = [];
-      rawSlots.forEach(slot => {
-        const [h, m] = slot.split(':');
-        const nextHour = (parseInt(h) + 1) % 24;
-        const nextHourStr = String(nextHour).padStart(2, '0');
-        const nextSlot = `${nextHourStr}:${m}`;
-        if (rawSlots.includes(nextSlot)) {
-          filtered.push(slot);
-        }
-      });
-      return filtered;
-    }
-    return rawSlots;
+    return rawSlots.filter((slot: any) => {
+      if (typeof slot === 'string') {
+        return true;
+      }
+      const [sh, sm] = slot.start.split(':').map(Number);
+      const [eh, em] = slot.end.split(':').map(Number);
+      const diff = (eh * 60 + em) - (sh * 60 + sm);
+      return diff === duration;
+    }).map((slot: any) => typeof slot === 'string' ? slot : slot.start);
   };
 
   const availableSlots = getDisplaySlots();
@@ -356,7 +357,7 @@ export function TeacherProfilePage() {
                 {/* Day Selector */}
                 <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
                   {DAYS.map(day => {
-                    const slots = slotsByDay[day] || [];
+                    const slots = getSlotsForDay(day);
                     return (
                       <button
                         key={day}
@@ -436,7 +437,7 @@ export function TeacherProfilePage() {
                     Session Duration
                   </label>
                   <div className="flex gap-2">
-                    {[30, 60, 90].map(d => (
+                    {sessionDurations.map(d => (
                       <button
                         key={d}
                         onClick={() => setDuration(d)}
