@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import React from 'react';
-import { Link } from 'react-router';
-import { CheckCircle, XCircle, Clock, Users, BookOpen, DollarSign, AlertTriangle, Eye, Loader2, AlertCircle, ShieldBan, ShieldCheck, Mail, MailX } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
+import { CheckCircle, XCircle, Clock, Users, BookOpen, DollarSign, AlertTriangle, Eye, Loader2, AlertCircle, ShieldBan, ShieldCheck, Mail, MailX, LogOut } from 'lucide-react';
 import { getTeacherApplications, approveTeacher, rejectTeacher, getAdminUsers, suspendUser, unsuspendUser, getProfile } from '../../api/profile';
+import { useAuth } from '../context/AuthContext';
 
 type AppStatus = 'pending' | 'approved' | 'rejected';
 interface Application {
@@ -17,6 +18,8 @@ interface AdminUser {
 }
 
 export function AdminPanel() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [applications, setApplications] = useState<Application[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +98,10 @@ export function AdminPanel() {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_suspended: !suspended } : u));
     } catch (err: any) { alert(err.message || 'Failed'); }
   };
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F6F1]">
@@ -104,9 +111,18 @@ export function AdminPanel() {
             <Link to="/" className="flex items-center gap-2"><div className="w-7 h-7 bg-[#C8962A] rounded-lg flex items-center justify-center"><BookOpen className="w-3.5 h-3.5 text-white" /></div><span className="text-white text-sm" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700 }}>muallim</span></Link>
             <div className="w-px h-5 bg-white/20" /><span className="text-white/60 text-sm">Admin Panel</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#C8962A] rounded-full flex items-center justify-center text-white text-xs" style={{ fontWeight: 700 }}>A</div>
-            <span className="text-white/70 text-sm hidden sm:block">Admin</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-[#C8962A] rounded-full flex items-center justify-center text-white text-xs" style={{ fontWeight: 700 }}>A</div>
+              <span className="text-white/70 text-sm hidden sm:block">Admin</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors border border-white/10"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-1 border-t border-white/10">
