@@ -1,6 +1,6 @@
 from rest_framework.permissions import BasePermission
 
-
+# custom permission classes to check if user is email verified and not suspended before allowing access to certain views.
 class IsEmailVerified(BasePermission):
     message = 'Email address is not verified.'
 
