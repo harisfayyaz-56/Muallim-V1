@@ -385,10 +385,10 @@ class GoogleAuthView(APIView):
             # Validate the token and ensure the audience matches our Google client ID
             google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
             if google_client_id:
-                id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj, google_client_id)
+                id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj, google_client_id, clock_skew_in_seconds=60)
             else:
                 # If client ID not set in env, fall back to standard verification
-                id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj)
+                id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request_obj, clock_skew_in_seconds=60)
         except Exception:
             # Log exception for debugging
             import traceback
@@ -413,19 +413,23 @@ class GoogleAuthView(APIView):
             'last_name': id_info.get('family_name', ''),
             'is_active': True,
         })
+        
+        # Prevent suspended users from logging in via Google
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        if profile.is_suspended or not user.is_active:
+            return Response({'detail': 'Account suspended'}, status=status.HTTP_403_FORBIDDEN)
+
         timezone = request.data.get('timezone', 'Asia/Dubai')
         valid_timezones = [choice[0] for choice in UserProfile.TIMEZONE_CHOICES]
         if timezone not in valid_timezones:
             timezone = 'Asia/Dubai'
 
         if created:
-            profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.email_verified = True
             profile.timezone = timezone
             profile.save()
         else:
             # Ensure existing Google users also have email_verified=True
-            profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.email_verified = True
             if profile.timezone == 'Asia/Dubai' and timezone != 'Asia/Dubai':
                 profile.timezone = timezone
