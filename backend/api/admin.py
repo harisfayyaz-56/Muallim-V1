@@ -13,16 +13,23 @@ from .models import (
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'user_type', 'phone', 'location', 'timezone', 'currency', 'created_at')
-    list_filter = ('user_type', 'timezone', 'created_at')
+    list_display = ('user', 'user_type', 'phone', 'location', 'timezone', 'currency', 'is_suspended', 'created_at')
+    list_filter = ('user_type', 'timezone', 'is_suspended', 'created_at')
     search_fields = ('user__username', 'user__email', 'phone')
     readonly_fields = ('created_at', 'updated_at', 'currency')
     fieldsets = (
         ('User', {'fields': ('user',)}),
-        ('Profile Info', {'fields': ('user_type', 'bio', 'phone', 'location', 'profile_picture')}),
+        ('Profile Info', {'fields': ('user_type', 'bio', 'phone', 'location', 'profile_picture', 'is_suspended')}),
         ('Preferences', {'fields': ('timezone', 'currency')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
+    def save_model(self, request, obj, form, change):
+        # Sync UserProfile.is_suspended with User.is_active
+        user = obj.user
+        user.is_active = not obj.is_suspended
+        user.save()
+        super().save_model(request, obj, form, change)
 
 
 # =====================
