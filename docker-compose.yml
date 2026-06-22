@@ -45,6 +45,9 @@ services:
       - "3000:5173"
     env_file:
       - .env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
     networks:

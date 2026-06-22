@@ -47,8 +47,7 @@ export function StudentDashboard() {
 
         const now = new Date();
         bookings.forEach((b: any) => {
-          const sDate = new Date(b.scheduled_date);
-          const isUpcoming = sDate >= now;
+          const isActive = b.status === 'confirmed' || b.status === 'pending';
           const session = {
             id: String(b.id),
             teacherId: String(b.teacher_id_read || b.teacher_id),
@@ -60,15 +59,15 @@ export function StudentDashboard() {
             date: b.scheduled_date,
             time: formatSlotTime(b.scheduled_date, tz),
             duration: b.duration_minutes,
-            status: isUpcoming ? 'upcoming' : b.status,
+            status: isActive ? 'upcoming' : b.status,
             totalPaid: Number(b.amount),
             meetingLink: b.meeting_link,
           };
 
-          if (isUpcoming && (b.status === 'confirmed' || b.status === 'pending')) {
+          if (isActive) {
             upcoming.push(session);
           } else {
-            if (b.status === 'confirmed' || b.status === 'completed') {
+            if (b.status === 'completed') {
               session.status = 'completed';
               completedCount += 1;
               learnedMinutes += b.duration_minutes;
