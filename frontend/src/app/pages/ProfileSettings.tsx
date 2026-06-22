@@ -5,7 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { AvatarUploader } from '../components/AvatarUploader';
 import { AvatarDisplay } from '../components/AvatarDisplay';
-import { getProfile, changePassword, setPassword, updateProfile } from '../../api/profile';
+import { getProfile, changePassword, setPassword, updateProfile, deleteAccount } from '../../api/profile';
 
 const TIMEZONES = [
   'Asia/Dubai',
@@ -49,6 +49,25 @@ export function ProfileSettings() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [avatarPreview, setAvatarPreview] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=200&h=200&fit=crop&auto=format');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteAccount(token);
+      localStorage.removeItem('muallim_access_token');
+      localStorage.removeItem('muallim_refresh_token');
+      window.location.href = '/';
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete account');
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
@@ -65,11 +84,10 @@ export function ProfileSettings() {
             location: profile.location || '',
             timezone: profile.timezone || 'Asia/Dubai',
           });
-          // Check if user has password (from profile response)
-          const has_password = (profile as any).has_password !== false;
+          const has_password = profile.has_password !== false;
           setHasPassword(has_password);
           setTeacherMode(profile.user_type === 'both' || profile.user_type === 'teacher');
-          setHasTeacherProfile((profile as any).has_teacher_profile === true);
+          setHasTeacherProfile(profile.has_teacher_profile === true);
           // profile_picture may be absolute URL depending on backend
           const pic = (profile as any).profile_picture || (profile as any).profile_picture_url || null;
           if (pic) setAvatarPreview(pic);
@@ -415,9 +433,48 @@ export function ProfileSettings() {
                       <AlertTriangle className="w-4 h-4" /> Delete Account
                     </h3>
                     <p className="text-red-700 text-sm mb-4">Permanently delete your account and all associated data. This cannot be undone.</p>
-                    <button className="px-4 py-2 border border-red-300 text-red-700 rounded-xl text-sm hover:bg-red-100 transition-colors">
+                    <button 
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="px-4 py-2 border border-red-300 text-red-700 rounded-xl text-sm hover:bg-red-100 transition-colors"
+                    >
                       Delete My Account
                     </button>
+
+                    {showDeleteConfirm && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0D1B2A]/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-[rgba(13,27,42,0.1)] shadow-2xl relative">
+                          <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.25rem', color: '#0D1B2A' }} className="mb-2">
+                            Delete Account?
+                          </h3>
+                          <p className="text-[#6B7280] text-sm mb-6 leading-relaxed">
+                            Are you absolutely sure you want to delete your account? This action is permanent, cannot be undone, and will delete all your settings, history, and profile details.
+                          </p>
+                          {deleteError && (
+                            <p className="text-red-600 text-xs mb-4">{deleteError}</p>
+                          )}
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowDeleteConfirm(false)}
+                              disabled={isDeleting}
+                              className="px-4 py-2 bg-[#F8F6F1] text-[#0D1B2A] rounded-xl text-sm hover:bg-[#F0ECE4] transition-colors"
+                              style={{ fontWeight: 600 }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleDeleteAccount}
+                              disabled={isDeleting}
+                              className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm hover:bg-red-700 transition-colors flex items-center gap-1.5"
+                              style={{ fontWeight: 600 }}
+                            >
+                              {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

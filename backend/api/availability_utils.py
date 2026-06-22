@@ -138,9 +138,7 @@ def convert_weekly_slots_to_timezone(slots_by_day, teacher_tz_name, viewer_tz_na
 
 
 def _duration_allowed(teacher_session_duration, requested_duration):
-    if teacher_session_duration == 'both':
-        return requested_duration in (30, 60)
-    return str(requested_duration) == teacher_session_duration
+    return requested_duration in (30, 60)
 
 
 def _bookings_overlap(slot_start, slot_end, bookings):
@@ -179,41 +177,36 @@ def generate_slots_for_date(teacher, target_date, duration_minutes, viewer_timez
         
         slot_date_teacher = target_date + timedelta(days=diff)
         
-        # Exact start and duration check from availability
-        h, m = av.start_time.hour, av.start_time.minute
-        
-        # Calculate slot duration from the database availability row
-        av_duration = (datetime.combine(slot_date_teacher.date(), av.end_time) - datetime.combine(slot_date_teacher.date(), av.start_time)).seconds // 60
-        
-        if av_duration != duration_minutes:
+        av_start_dt = datetime.combine(slot_date_teacher, av.start_time)
+        av_end_dt = datetime.combine(slot_date_teacher, av.end_time)
+        if av.end_time < av.start_time:
+            av_end_dt += timedelta(days=1)
+            
+        av_dur = int((av_end_dt - av_start_dt).total_seconds() / 60)
+        if av_dur != duration_minutes:
             continue
 
-        dt_teacher = datetime(slot_date_teacher.year, slot_date_teacher.month, slot_date_teacher.day, h, m, tzinfo=teacher_tz)
-        dt_utc = dt_teacher.astimezone(ZoneInfo('UTC'))
-        slot_end = dt_utc + timedelta(minutes=duration_minutes)
-
-        if dt_utc < django_tz.now():
-            continue
-
-        is_booked = _bookings_overlap(dt_utc, slot_end, active_bookings)
-        if is_booked:
-            continue
-
-        dt_viewer = dt_teacher.astimezone(viewer_tz)
-        if dt_viewer.date() != target_date:
-            continue
-
-        time_str = dt_viewer.strftime('%H:%M')
-        key = (time_str, dt_utc.isoformat())
-        if key in seen:
-            continue
-        seen.add(key)
-
-        slots.append({
-            'time': time_str,
-            'utc': dt_utc.isoformat(),
-            'available': True,
-        })
+        current_dt = av_start_dt
+        while current_dt + timedelta(minutes=duration_minutes) <= av_end_dt:
+            dt_teacher = current_dt.replace(tzinfo=teacher_tz)
+            dt_utc = dt_teacher.astimezone(ZoneInfo('UTC'))
+            slot_end = dt_utc + timedelta(minutes=duration_minutes)
+            
+            if dt_utc >= django_tz.now():
+                is_booked = _bookings_overlap(dt_utc, slot_end, active_bookings)
+                if not is_booked:
+                    dt_viewer = dt_teacher.astimezone(viewer_tz)
+                    if dt_viewer.date() == target_date:
+                        time_str = dt_viewer.strftime('%H:%M')
+                        key = (time_str, dt_utc.isoformat())
+                        if key not in seen:
+                            seen.add(key)
+                            slots.append({
+                                'time': time_str,
+                                'utc': dt_utc.isoformat(),
+                                'available': True,
+                            })
+            current_dt += timedelta(minutes=duration_minutes)
 
     slots.sort(key=lambda s: s['utc'])
     return slots
@@ -236,21 +229,30 @@ def validate_booking_slot(teacher, scheduled_date, duration_minutes):
 
     dt_teacher = scheduled_date.astimezone(teacher_tz)
     day_of_week = WEEKDAYS[dt_teacher.weekday()]
-    start_time = dt_teacher.time().replace(second=0, microsecond=0)
-
-    # Match exact slot by start time and duration
+    
+    req_start_naive = dt_teacher.replace(tzinfo=None)
+    req_end_naive = (dt_teacher + timedelta(minutes=duration_minutes)).replace(tzinfo=None)
+    
     availabilities = teacher.availabilities.filter(
-        day_of_week=day_of_week, is_available=True, start_time=start_time
+        day_of_week=day_of_week, is_available=True
     )
     
-    matching_av = None
+    is_available = False
     for av in availabilities:
-        av_duration = (datetime.combine(dt_teacher.date(), av.end_time) - datetime.combine(dt_teacher.date(), av.start_time)).seconds // 60
-        if av_duration == duration_minutes:
-            matching_av = av
+        av_start_dt = datetime.combine(dt_teacher.date(), av.start_time)
+        av_end_dt = datetime.combine(dt_teacher.date(), av.end_time)
+        if av.end_time < av.start_time:
+            av_end_dt += timedelta(days=1)
+            
+        av_dur = int((av_end_dt - av_start_dt).total_seconds() / 60)
+        if av_dur != duration_minutes:
+            continue
+
+        if av_start_dt <= req_start_naive and req_end_naive <= av_end_dt:
+            is_available = True
             break
 
-    if not matching_av:
+    if not is_available:
         raise ValueError('Selected time is not within teacher availability')
 
     slot_end = scheduled_date + timedelta(minutes=duration_minutes)

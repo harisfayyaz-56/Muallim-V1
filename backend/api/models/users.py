@@ -64,6 +64,7 @@ class Teacher(models.Model):
     SESSION_DURATION_CHOICES = (
         ('30', '30 minutes'),
         ('60', '60 minutes'),
+        ('both', 'Both (30 and 60 minutes)'),
     )
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='teacher_profile')

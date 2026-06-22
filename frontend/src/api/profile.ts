@@ -20,6 +20,8 @@ export interface UserProfile {
   currency: string;
   created_at: string;
   updated_at: string;
+  has_password?: boolean;
+  has_teacher_profile?: boolean;
 }
 
 export interface Timezone {
@@ -323,12 +325,16 @@ export const getTeachers = async (token?: string): Promise<TeacherProfile[]> => 
 /**
  * Get a specific teacher's profile
  */
-export const getTeacher = async (id: string): Promise<TeacherProfile> => {
+export const getTeacher = async (id: string, token?: string): Promise<TeacherProfile> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const response = await fetch(`${API_BASE}/teacher/${id}/`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -458,6 +464,26 @@ export const unsuspendUser = async (token: string, userId: number): Promise<any>
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to unsuspend user');
+  }
+
+  return response.json();
+};
+
+/**
+ * Delete current user account permanently
+ */
+export const deleteAccount = async (token: string): Promise<{ detail: string }> => {
+  const response = await fetch(`${API_BASE}/profile/delete-account/`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to delete account');
   }
 
   return response.json();

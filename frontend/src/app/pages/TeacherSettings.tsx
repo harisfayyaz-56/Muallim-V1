@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Save, Plus, X, ChevronLeft, AlertCircle, CheckCircle, ArrowRight, ChevronDown, Check, Trash2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -15,6 +15,7 @@ const INITIAL_AVAILABILITY: Record<string, string[]> = { ...EMPTY_GRID };
 const SKILL_SUGGESTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Arabic', 'Programming', 'Python', 'JavaScript', 'React', 'Business', 'Finance', 'IELTS', 'SAT', 'IGCSE', 'A-Level', 'IB', 'Guitar', 'Piano', 'Quran'];
 
 export function TeacherSettings() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'profile' | 'pricing' | 'availability'>('profile');
   const [availability, setAvailability] = useState<Record<string, { start: string; end: string }[]>>({
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
@@ -31,7 +32,9 @@ export function TeacherSettings() {
   const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
   const [rejectionReason, setRejectionReason] = useState('');
   const [hasTeacherProfile, setHasTeacherProfile] = useState(false);
-  const [sessionDuration, setSessionDuration] = useState<30 | 60>(60);
+  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [sessionDurationSetting, setSessionDurationSetting] = useState<'30' | '60' | 'both'>('30');
+  const [sessionDuration, setSessionDuration] = useState<30 | 60>(30);
   const [teacherTimezone, setTeacherTimezone] = useState('Asia/Dubai');
   
   // Custom availability state variables
@@ -91,12 +94,28 @@ export function TeacherSettings() {
     });
   };
 
-  const deleteSlot = (day: string, index: number) => {
+  const deleteSlot = (day: string, start: string) => {
     setAvailability(prev => {
       const daySlots = prev[day] || [];
-      const updated = daySlots.filter((_, i) => i !== index);
+      const updated = daySlots.filter(s => {
+        const sStart = typeof s === 'string' ? s : s.start;
+        return sStart !== start;
+      });
       return { ...prev, [day]: updated };
     });
+  };
+
+  const getSlotDuration = (slot: any) => {
+    const isString = typeof slot === 'string';
+    const start = isString ? slot : slot.start;
+    const end = isString ? getEndTime(slot, sessionDuration) : slot.end;
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    let diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff < 0) {
+      diff += 24 * 60;
+    }
+    return diff;
   };
 
   useEffect(() => {
@@ -111,6 +130,7 @@ export function TeacherSettings() {
         if (userProfile?.timezone) setTeacherTimezone(userProfile.timezone);
         if (tProfile) {
           setHasTeacherProfile(true);
+          setIsOnboarding(false);
           setForm({
             headline: tProfile.headline || tProfile.qualifications || '',
             bio: tProfile.bio || '',
@@ -125,8 +145,12 @@ export function TeacherSettings() {
           setRejectionReason(tProfile.rejection_reason || '');
           if (tProfile.session_duration) {
             const sd = tProfile.session_duration;
+            setSessionDurationSetting(sd);
             setSessionDuration(sd === '30' ? 30 : 60);
           }
+        } else {
+          setHasTeacherProfile(false);
+          setIsOnboarding(true);
         }
         try {
           const avail = await getMyAvailability(token);
@@ -154,6 +178,7 @@ export function TeacherSettings() {
           if (avail.timezone) setTeacherTimezone(avail.timezone);
           if (avail.session_duration) {
             const sd = avail.session_duration;
+            setSessionDurationSetting(sd);
             setSessionDuration(sd === '30' ? 30 : 60);
           }
         } catch {
@@ -161,6 +186,7 @@ export function TeacherSettings() {
         }
       } catch {
         setHasTeacherProfile(false);
+        setIsOnboarding(true);
       }
     })();
   }, []);
@@ -176,13 +202,15 @@ export function TeacherSettings() {
       }
       try {
         setSaveError('');
-        const sd = sessionDuration === 30 ? '30' : '60';
         await updateMyAvailability(token, {
           grid: availability as any,
-          session_duration: sd as '30' | '60',
+          session_duration: sessionDurationSetting,
         });
         setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+        setTimeout(() => {
+          setSaved(false);
+          navigate('/teacher-dashboard');
+        }, 1500);
       } catch (err: any) {
         setSaveError(err.message || 'Failed to save availability');
       }
@@ -252,15 +280,26 @@ export function TeacherSettings() {
       <div className="pt-16">
         <div className="bg-[#0D1B2A] py-10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <Link to="/teacher-dashboard" className="inline-flex items-center gap-2 text-[#9CA3AF] hover:text-white text-sm transition-colors mb-4">
-              <ChevronLeft className="w-4 h-4" /> Back to Dashboard
+            <Link 
+              to={isOnboarding ? "/settings" : "/teacher-dashboard"} 
+              className="inline-flex items-center gap-2 text-[#9CA3AF] hover:text-white text-sm transition-colors mb-4"
+            >
+              <ChevronLeft className="w-4 h-4" /> {isOnboarding ? "Back to Settings" : "Back to Dashboard"}
             </Link>
             <h1 className="text-white" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.75rem' }}>
-              Teacher Profile Settings
+              {isOnboarding ? 'Teacher Onboarding' : 'Teacher Profile Settings'}
             </h1>
 
             <div className="flex items-center gap-2 mt-3">
-              {profileStatus === 'approved' ? (
+              {isOnboarding ? (
+                <div className="flex items-center gap-1.5 text-[#C8962A] text-xs bg-[#C8962A]/10 px-3 py-1.5 rounded-xl font-semibold border border-[#C8962A]/20">
+                  <AlertCircle className="w-4 h-4" /> Onboarding — {
+                    activeTab === 'profile' ? 'Step 1 of 3: Public Profile' :
+                    activeTab === 'pricing' ? 'Step 2 of 3: Set Pricing' :
+                    'Step 3 of 3: Configure Availability'
+                  }
+                </div>
+              ) : profileStatus === 'approved' ? (
                 <div className="flex items-center gap-1.5 text-emerald-400 text-xs">
                   <CheckCircle className="w-4 h-4" /> Profile Approved — visible to students
                 </div>
@@ -287,16 +326,27 @@ export function TeacherSettings() {
         {/* Tabs */}
         <div className="bg-[#0D1B2A] border-t border-white/10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-1">
-            {(['profile', 'pricing', 'availability'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-5 py-3 text-sm capitalize transition-colors border-b-2 -mb-px ${activeTab === tab ? 'border-[#C8962A] text-white' : 'border-transparent text-white/50 hover:text-white/70'}`}
-                style={{ fontWeight: activeTab === tab ? 600 : 400 }}
-              >
-                {tab}
-              </button>
-            ))}
+            {(['profile', 'pricing', 'availability'] as const).map(tab => {
+              const isDisabled = isOnboarding && tab !== 'profile' && !hasTeacherProfile;
+              return (
+                <button
+                  key={tab}
+                  disabled={isDisabled}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-5 py-3 text-sm capitalize transition-colors border-b-2 -mb-px ${
+                    activeTab === tab 
+                      ? 'border-[#C8962A] text-white' 
+                      : isDisabled 
+                        ? 'border-transparent text-white/20 cursor-not-allowed'
+                        : 'border-transparent text-white/50 hover:text-white/70'
+                  }`}
+                  style={{ fontWeight: activeTab === tab ? 600 : 400 }}
+                  title={isDisabled ? "Please complete and save your profile details first" : ""}
+                >
+                  {tab}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -525,7 +575,10 @@ export function TeacherSettings() {
                     <button
                       key={d}
                       type="button"
-                      onClick={() => setSessionDuration(d as 30 | 60)}
+                      onClick={() => {
+                        setSessionDuration(d as 30 | 60);
+                        setSessionDurationSetting(String(d) as '30' | '60');
+                      }}
                       className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${sessionDuration === d ? 'bg-white text-[#0D1B2A] shadow-sm' : 'text-[#9CA3AF]'}`}
                       style={{ fontWeight: sessionDuration === d ? 600 : 400 }}
                     >
@@ -536,17 +589,32 @@ export function TeacherSettings() {
               </div>
 
               <div className="p-6 space-y-6">
+                {/* Allowed booking durations */}
+                <div className="bg-[#F8F6F1] rounded-2xl p-5 border border-[rgba(13,27,42,0.05)]">
+                  <h3 className="text-sm text-[#0D1B2A] font-semibold mb-1">Allowed booking durations</h3>
+                  <p className="text-xs text-[#9CA3AF] mb-4">Choose which lesson lengths students can book with you.</p>
+                  <div className="flex gap-2 max-w-md">
+                    {(['30', '60'] as const).map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => {
+                          setSessionDurationSetting(d);
+                          setSessionDuration(Number(d) as 30 | 60);
+                        }}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs transition-all border ${sessionDurationSetting === d ? 'bg-[#0D1B2A] border-[#0D1B2A] text-white font-semibold' : 'border-[rgba(13,27,42,0.15)] bg-white text-[#6B7280] hover:border-[#0D1B2A]'}`}
+                      >
+                        {`${d} mins`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Weekday Selector Row */}
                 <div className="flex gap-1.5 overflow-x-auto pb-2 border-b border-[rgba(13,27,42,0.04)]">
                   {DAYS.map(day => {
                     const daySlots = availability[day] || [];
-                    const activeCount = daySlots.filter((slot: any) => {
-                      if (typeof slot === 'string') return true;
-                      const [sh, sm] = slot.start.split(':').map(Number);
-                      const [eh, em] = slot.end.split(':').map(Number);
-                      const diff = (eh * 60 + em) - (sh * 60 + sm);
-                      return diff === sessionDuration;
-                    }).length;
+                    const activeCount = daySlots.filter(s => getSlotDuration(s) === sessionDuration).length;
 
                     return (
                       <button
@@ -620,13 +688,7 @@ export function TeacherSettings() {
 
                     {(() => {
                       const daySlots = availability[selectedSettingsDay] || [];
-                      const filteredSlots = daySlots.filter((slot: any) => {
-                        if (typeof slot === 'string') return true;
-                        const [sh, sm] = slot.start.split(':').map(Number);
-                        const [eh, em] = slot.end.split(':').map(Number);
-                        const diff = (eh * 60 + em) - (sh * 60 + sm);
-                        return diff === sessionDuration;
-                      });
+                      const filteredSlots = daySlots.filter(s => getSlotDuration(s) === sessionDuration);
 
                       if (filteredSlots.length === 0) {
                         return (
@@ -638,27 +700,30 @@ export function TeacherSettings() {
 
                       return (
                         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                          {daySlots.map((slot: any, idx: number) => {
+                          {filteredSlots.map((slot: any, idx: number) => {
                             const isString = typeof slot === 'string';
                             const start = isString ? slot : slot.start;
                             const end = isString ? getEndTime(slot, sessionDuration) : slot.end;
                             const [sh, sm] = start.split(':').map(Number);
                             const [eh, em] = end.split(':').map(Number);
                             const diff = (eh * 60 + em) - (sh * 60 + sm);
-                            
-                            if (diff !== sessionDuration) return null;
 
-                            return (
+                             return (
                               <div
                                 key={idx}
                                 className="flex items-center justify-between px-4 py-2.5 bg-white border border-[rgba(13,27,42,0.06)] rounded-xl hover:shadow-sm transition-all"
                               >
-                                <span className="text-sm font-semibold text-[#0D1B2A] tabular-nums">
-                                  {start} – {end}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-semibold text-[#0D1B2A] tabular-nums">
+                                    {start} – {end}
+                                  </span>
+                                  <span className="text-[10px] text-[#9CA3AF] mt-0.5">
+                                    {diff} min session
+                                  </span>
+                                </div>
                                 <button
                                   type="button"
-                                  onClick={() => deleteSlot(selectedSettingsDay, idx)}
+                                  onClick={() => deleteSlot(selectedSettingsDay, start)}
                                   className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
                                   title="Delete Slot"
                                 >
@@ -686,7 +751,10 @@ export function TeacherSettings() {
                   className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`}
                   style={{ fontWeight: 600 }}
                 >
-                  {saved ? '✓ Saved' : <><Save className="w-4 h-4" /> Save Schedule</>}
+                  {saved 
+                    ? (isOnboarding ? '✓ Onboarding Complete!' : '✓ Saved') 
+                    : (isOnboarding ? <><Check className="w-4 h-4" /> Complete Onboarding & Submit</> : <><Save className="w-4 h-4" /> Save Schedule</>)
+                  }
                 </button>
               </div>
             </div>

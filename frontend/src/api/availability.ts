@@ -83,10 +83,18 @@ export const updateMyAvailability = async (
 
 export const getTeacherAvailability = async (
   teacherId: string,
-  viewerTimezone?: string
+  viewerTimezone?: string,
+  token?: string
 ): Promise<TeacherAvailabilityData> => {
   const params = viewerTimezone ? `?timezone=${encodeURIComponent(viewerTimezone)}` : '';
-  const response = await fetch(`${API_BASE}/teacher/${teacherId}/availability/${params}`);
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${API_BASE}/teacher/${teacherId}/availability/${params}`, {
+    method: 'GET',
+    headers,
+  });
   if (!response.ok) throw new Error('Failed to fetch teacher availability');
   return response.json();
 };
@@ -95,11 +103,19 @@ export const getTeacherSlotsForDate = async (
   teacherId: string,
   date: string,
   duration: number,
-  viewerTimezone?: string
+  viewerTimezone?: string,
+  token?: string
 ): Promise<DateSlotsResponse> => {
   const params = new URLSearchParams({ date, duration: String(duration) });
   if (viewerTimezone) params.set('timezone', viewerTimezone);
-  const response = await fetch(`${API_BASE}/teacher/${teacherId}/slots/?${params}`);
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${API_BASE}/teacher/${teacherId}/slots/?${params}`, {
+    method: 'GET',
+    headers,
+  });
   if (!response.ok) throw new Error('Failed to fetch available slots');
   return response.json();
 };

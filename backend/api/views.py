@@ -109,6 +109,11 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     def set_password(self, request):
         """Set password for user (for Google sign-in users without password)"""
         user = request.user
+        if user.has_usable_password():
+            return Response(
+                {'detail': 'Password already set. Use change-password instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         new_password = request.data.get('new_password')
         
         if not new_password:
@@ -240,6 +245,13 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile.is_suspended = False
         profile.save()
         return Response({'detail': 'User unsuspended', 'is_suspended': False})
+
+    @action(detail=False, methods=['delete'], url_path='delete-account', permission_classes=[IsAuthenticated])
+    def delete_account(self, request):
+        """Permanently delete user's account and all associated data"""
+        user = request.user
+        user.delete()
+        return Response({'detail': 'Account deleted successfully'})
 
 
 class BookingViewSet(rf_viewsets.ModelViewSet):

@@ -14,11 +14,18 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
   const [profileOpen, setProfileOpen] = useState(false);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [isLoggedInState, setIsLoggedInState] = useState(isLoggedIn);
   const location = useLocation();
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
-    if (!token || !isLoggedIn) return;
+    const hasToken = !!token;
+    setIsLoggedInState(hasToken);
+
+    if (!token) {
+      setProfile(null);
+      return;
+    }
     (async () => {
       try {
         const data = await getProfile(token);
@@ -27,7 +34,7 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
         console.error('Navbar failed to load profile:', err);
       }
     })();
-  }, [isLoggedIn]);
+  }, [location.pathname, isLoggedIn]);
 
   const isActive = (href: string) => location.pathname === href;
 
@@ -35,6 +42,8 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
   const avatarUrl = profile?.profile_picture || profile?.profile_picture_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format';
 
   const isTeacherMode = location.pathname.startsWith('/teacher-dashboard') || location.pathname.startsWith('/settings/teacher');
+  const hasTeacherProfile = isTeacher || profile?.user_type === 'both' || profile?.user_type === 'teacher' || profile?.has_teacher_profile;
+  const teacherTargetUrl = hasTeacherProfile ? '/teacher-dashboard' : '/settings/teacher';
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-[rgba(13,27,42,0.08)]">
@@ -82,26 +91,24 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-3">
-            {isLoggedIn ? (
+            {isLoggedInState ? (
               <>
                 {/* Teacher Mode Toggle */}
-                {(isTeacher || profile?.user_type === 'both' || profile?.user_type === 'teacher') && (
-                  <Link
-                    to={isTeacherMode ? '/dashboard' : '/teacher-dashboard'}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#F8F6F1] hover:bg-[#F0ECE4] border border-[rgba(13,27,42,0.06)] rounded-xl transition-all duration-200 group mr-2"
-                  >
-                    <span className="text-xs text-[#0D1B2A]" style={{ fontWeight: 600 }}>
-                      {isTeacherMode ? 'Teacher Mode' : 'Student Mode'}
-                    </span>
-                    <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ${
-                      isTeacherMode ? 'bg-[#C8962A]' : 'bg-gray-300'
-                    }`}>
-                      <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-200 ${
-                        isTeacherMode ? 'translate-x-4' : 'translate-x-0'
-                      }`} />
-                    </div>
-                  </Link>
-                )}
+                <Link
+                  to={isTeacherMode ? '/dashboard' : teacherTargetUrl}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-[#F8F6F1] hover:bg-[#F0ECE4] border border-[rgba(13,27,42,0.06)] rounded-xl transition-all duration-200 group mr-2"
+                >
+                  <span className="text-xs text-[#0D1B2A]" style={{ fontWeight: 600 }}>
+                    {isTeacherMode ? 'Teacher Mode' : 'Student Mode'}
+                  </span>
+                  <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ${
+                    isTeacherMode ? 'bg-[#C8962A]' : 'bg-gray-300'
+                  }`}>
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-200 ${
+                      isTeacherMode ? 'translate-x-4' : 'translate-x-0'
+                    }`} />
+                  </div>
+                </Link>
                 <button className="relative p-2 text-[#6B7280] hover:text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg transition-colors">
                   <Bell className="w-5 h-5" />
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#C8962A] rounded-full" />
@@ -195,32 +202,30 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
             );
           })}
           <div className="pt-3 border-t border-[rgba(13,27,42,0.08)] mt-3 flex flex-col gap-2">
-            {isLoggedIn ? (
+            {isLoggedInState ? (
               <>
                 {/* Teacher Mode Toggle */}
-                {(isTeacher || profile?.user_type === 'both' || profile?.user_type === 'teacher') && (
-                  <Link
-                    to={isTeacherMode ? '/dashboard' : '/teacher-dashboard'}
-                    className="px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg flex items-center justify-between"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    <span className="flex items-center gap-2">
-                      {isTeacherMode ? (
-                        <GraduationCap className="w-4 h-4 text-[#C8962A]" />
-                      ) : (
-                        <User className="w-4 h-4 text-gray-500" />
-                      )}
-                      <span>{isTeacherMode ? 'Teacher Mode' : 'Student Mode'}</span>
-                    </span>
-                    <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ${
-                      isTeacherMode ? 'bg-[#C8962A]' : 'bg-gray-300'
-                    }`}>
-                      <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-200 ${
-                        isTeacherMode ? 'translate-x-4' : 'translate-x-0'
-                      }`} />
-                    </div>
-                  </Link>
-                )}
+                <Link
+                  to={isTeacherMode ? '/dashboard' : teacherTargetUrl}
+                  className="px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg flex items-center justify-between"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <span className="flex items-center gap-2">
+                    {isTeacherMode ? (
+                      <GraduationCap className="w-4 h-4 text-[#C8962A]" />
+                    ) : (
+                      <User className="w-4 h-4 text-gray-500" />
+                    )}
+                    <span>{isTeacherMode ? 'Teacher Mode' : 'Student Mode'}</span>
+                  </span>
+                  <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ${
+                    isTeacherMode ? 'bg-[#C8962A]' : 'bg-gray-300'
+                  }`}>
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-200 ${
+                      isTeacherMode ? 'translate-x-4' : 'translate-x-0'
+                    }`} />
+                  </div>
+                </Link>
                 <Link to="/dashboard" className="px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg flex items-center gap-2" onClick={() => setMobileOpen(false)}>
                   <LayoutDashboard className="w-4 h-4" /> Dashboard
                 </Link>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Calendar, DollarSign, Users, Clock, Star, Settings, ExternalLink, CheckCircle, AlertCircle, TrendingUp, ArrowRight, XCircle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -11,6 +11,7 @@ import { getTimezoneAbbr, formatSlotTime, DEFAULT_TIMEZONE } from '../../utils/p
 const DAYS = DAYS_SHORT;
 
 export function TeacherDashboard() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'availability'>('overview');
   const [teacherName, setTeacherName] = useState('Teacher');
   const [teacherAvatar, setTeacherAvatar] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format');
@@ -46,9 +47,13 @@ export function TeacherDashboard() {
         const tProfile = await getTeacherProfile(token);
         if (tProfile) {
           setProfileStatus(tProfile.status || 'pending');
+        } else {
+          navigate('/settings/teacher');
+          return;
         }
       } catch (err) {
-        setProfileStatus('pending');
+        navigate('/settings/teacher');
+        return;
       }
 
       try {
@@ -71,8 +76,7 @@ export function TeacherDashboard() {
 
         const now = new Date();
         bookings.forEach((b: any) => {
-          const sDate = new Date(b.scheduled_date);
-          const isUpcoming = sDate >= now;
+          const isActive = b.status === 'confirmed' || b.status === 'pending';
           const session = {
             id: String(b.id),
             teacherId: String(b.teacher_id_read || b.teacher_id),
@@ -84,15 +88,16 @@ export function TeacherDashboard() {
             date: new Date(b.scheduled_date).toLocaleDateString('en-AE', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }),
             time: formatSlotTime(b.scheduled_date, tz),
             duration: b.duration_minutes,
-            status: isUpcoming ? 'upcoming' : b.status,
+            status: isActive ? 'upcoming' : b.status,
             totalPaid: Number(b.amount),
             meetingLink: b.meeting_link,
+            scheduledDate: b.scheduled_date,
           };
 
-          if (isUpcoming && (b.status === 'confirmed' || b.status === 'pending')) {
+          if (isActive) {
             upcoming.push(session);
           } else {
-            if (b.status === 'confirmed' || b.status === 'completed') {
+            if (b.status === 'completed') {
               session.status = 'completed';
               totalEarnings += Number(b.amount);
               activeStudents.add(b.student_name);
@@ -308,62 +313,107 @@ export function TeacherDashboard() {
             </div>
           )}
 
-          {activeTab === 'availability' && (
-            <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] overflow-hidden">
-              <div className="px-5 py-4 border-b border-[rgba(13,27,42,0.06)] flex items-center justify-between">
-                <div>
-                  <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Weekly Availability</h3>
-                  <p className="text-[#9CA3AF] text-xs mt-0.5">
-                    All times in {getTimezoneAbbr(teacherTimezone)} · {countWeeklySlots(availabilityGrid)} open slots
-                  </p>
+          {activeTab === 'availability' && (() => {
+            const bookedKeys = new Set<string>();
+            [...upcomingSessions, ...pastSessions].forEach((s: any) => {
+              if (s.scheduledDate && s.status === 'upcoming') {
+                try {
+                  const d = new Date(s.scheduledDate);
+                  const dayName = d.toLocaleDateString('en-US', { timeZone: teacherTimezone, weekday: 'short' });
+                  const localTime = d.toLocaleTimeString('en-US', { timeZone: teacherTimezone, hour12: false, hour: '2-digit', minute: '2-digit' });
+                  bookedKeys.add(`${dayName}-${localTime}`);
+                } catch (e) {
+                  console.error('Error parsing scheduledDate for booked set:', e);
+                }
+              }
+            });
+
+            const DAYS_FULL = {
+              Mon: 'Monday',
+              Tue: 'Tuesday',
+              Wed: 'Wednesday',
+              Thu: 'Thursday',
+              Fri: 'Friday',
+              Sat: 'Saturday',
+              Sun: 'Sunday'
+            };
+
+            // Count total available slots across all days
+            let totalAvailable = 0;
+            DAYS.forEach(day => {
+              const slots = availabilityGrid[day] || [];
+              const availableSlots = slots.filter((slot: any) => {
+                const startTime = typeof slot === 'string' ? slot : slot.start;
+                const key = `${day}-${startTime}`;
+                return !bookedKeys.has(key);
+              });
+              totalAvailable += availableSlots.length;
+            });
+
+            return (
+              <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] overflow-hidden">
+                <div className="px-5 py-4 border-b border-[rgba(13,27,42,0.06)] flex items-center justify-between">
+                  <div>
+                    <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Available Slots</h3>
+                    <p className="text-[#9CA3AF] text-xs mt-0.5">
+                      All times in {getTimezoneAbbr(teacherTimezone)} · {totalAvailable} active available slots
+                    </p>
+                  </div>
+                  <Link to="/settings/teacher" className="flex items-center gap-1.5 text-xs text-[#C8962A] hover:underline">
+                    <Settings className="w-3.5 h-3.5" /> Manage in Settings
+                  </Link>
                 </div>
-                <Link to="/settings/teacher" className="flex items-center gap-1.5 text-xs text-[#C8962A] hover:underline">
-                  <Settings className="w-3.5 h-3.5" /> Manage in Settings
-                </Link>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px]">
-                  <thead>
-                    <tr>
-                      <th className="w-20 px-4 py-3 text-left text-xs text-[#9CA3AF]">Time ({getTimezoneAbbr(teacherTimezone)})</th>
-                      {DAYS.map(d => (
-                        <th key={d} className="px-2 py-3 text-center text-xs text-[#0D1B2A]" style={{ fontWeight: 600 }}>{d}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {TIME_SLOTS.map(time => (
-                      <tr key={time} className="border-t border-[rgba(13,27,42,0.04)]">
-                        <td className="px-4 py-2 text-xs text-[#9CA3AF]">{time}</td>
-                        {DAYS.map(day => {
-                          const available = (availabilityGrid[day] || []).includes(time);
-                          return (
-                            <td key={day} className="px-2 py-2 text-center">
-                              <div className={`w-8 h-8 rounded-lg mx-auto flex items-center justify-center cursor-pointer transition-colors ${
-                                available ? 'bg-[#C8962A]/15 border border-[#C8962A]/30 hover:bg-[#C8962A]/25' : 'bg-[#F8F6F1] hover:bg-[#F0ECE4]'
-                              }`}>
-                                {available && <div className="w-2.5 h-2.5 bg-[#C8962A] rounded-full" />}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-5 py-3 bg-[#F8F6F1] border-t border-[rgba(13,27,42,0.06)] flex items-center gap-4 text-xs text-[#9CA3AF]">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-[#C8962A]/15 border border-[#C8962A]/30" />
-                  Available
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-6">
+                  {DAYS.map(day => {
+                    const slots = availabilityGrid[day] || [];
+                    const availableSlots = slots.filter((slot: any) => {
+                      const startTime = typeof slot === 'string' ? slot : slot.start;
+                      const key = `${day}-${startTime}`;
+                      return !bookedKeys.has(key);
+                    });
+
+                    return (
+                      <div key={day} className="bg-white rounded-2xl border border-[rgba(13,27,42,0.08)] p-5 flex flex-col shadow-sm">
+                        <h4 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="border-b border-[rgba(13,27,42,0.06)] pb-2 mb-3 text-sm">
+                          {DAYS_FULL[day as keyof typeof DAYS_FULL]}
+                        </h4>
+                        <div className="space-y-2 flex-1">
+                          {availableSlots.length === 0 ? (
+                            <p className="text-xs text-[#9CA3AF] italic">No available slots</p>
+                          ) : (
+                            availableSlots.map((slot: any, idx: number) => {
+                              const startTime = typeof slot === 'string' ? slot : slot.start;
+                              let endTime = '';
+                              let dur = 30;
+                              if (typeof slot === 'string') {
+                                const [h, m] = slot.split(':').map(Number);
+                                let eh = h;
+                                let em = m + 30;
+                                if (em >= 60) { eh += 1; em -= 60; }
+                                endTime = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+                              } else {
+                                endTime = slot.end;
+                                const [sh, sm] = slot.start.split(':').map(Number);
+                                const [eh, em] = slot.end.split(':').map(Number);
+                                dur = (eh * 60 + em) - (sh * 60 + sm);
+                              }
+                              return (
+                                <div key={idx} className="flex items-center justify-between bg-[#F8F6F1] rounded-xl px-3 py-2 border border-[rgba(13,27,42,0.03)]">
+                                  <span className="text-[#0D1B2A] text-xs font-semibold">{startTime} - {endTime}</span>
+                                  <span className="text-[#C8962A] text-[10px] font-bold uppercase tracking-wider bg-[#C8962A]/10 px-2 py-0.5 rounded-full">{dur} min</span>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-[#F8F6F1]" />
-                  Unavailable
-                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
