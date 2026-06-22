@@ -105,6 +105,9 @@ class RegisterView(APIView):
         if not email or not password:
             return Response({'detail': 'Email and password required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if len(password) < 8:
+            return Response({'detail': 'Password must be at least 8 characters long'}, status=status.HTTP_400_BAD_REQUEST)
+
         if User.objects.filter(email=email).exists():
             return Response({'detail': 'User with this email already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -381,6 +384,8 @@ class PasswordResetConfirmView(APIView):
         new_password = request.data.get('new_password')
         if not uidb64 or not token or not new_password:
             return Response({'detail': 'uid, token and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 8:
+            return Response({'detail': 'Password must be at least 8 characters long'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
