@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useNavigate } from 'react-router';
 import { Calendar, Clock, ChevronLeft, ChevronRight, CreditCard, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -26,21 +26,72 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 
 export function BookingPage() {
   const { teacherId } = useParams<{ teacherId: string }>();
+  const navigate = useNavigate();
   const [teacher, setTeacher] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<BookableSlot | null>(null);
-  const [duration, setDuration] = useState(60);
-  const [step, setStep] = useState<'select' | 'confirm' | 'success'>('select');
+  
+  // Parse URL parameters synchronously
+  const urlParamsInit = new URLSearchParams(window.location.search);
+  const preDayInit = urlParamsInit.get('day');
+  const preTimeInit = urlParamsInit.get('time');
+  const preDurInit = urlParamsInit.get('duration');
+
+  const initialDuration = preDurInit && (Number(preDurInit) === 30 || Number(preDurInit) === 60) ? Number(preDurInit) : 60;
+  
+  let initialSlot: BookableSlot | null = null;
+  let initialStep: 'select' | 'confirm' | 'success' = 'select';
+  let initialDay: number | null = null;
+  let initialYear = today.getFullYear();
+  let initialMonth = today.getMonth();
+
+  if (preDayInit && preTimeInit) {
+    try {
+      const dayMap: Record<string, number> = {
+        sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6
+      };
+      const targetDayOfWeek = dayMap[preDayInit.toLowerCase()];
+      if (targetDayOfWeek !== undefined) {
+        const todayObj = new Date();
+        const currentDayOfWeek = todayObj.getDay();
+        let diff = targetDayOfWeek - currentDayOfWeek;
+        if (diff < 0) diff += 7;
+        
+        const targetDate = new Date();
+        targetDate.setDate(todayObj.getDate() + diff);
+        
+        const [hours, minutes] = preTimeInit.split(':').map(Number);
+        const localDt = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), hours, minutes, 0, 0);
+        
+        initialSlot = {
+          time: preTimeInit,
+          utc: localDt.toISOString(),
+          available: true
+        };
+        initialStep = 'confirm';
+        initialDay = targetDate.getDate();
+        initialYear = targetDate.getFullYear();
+        initialMonth = targetDate.getMonth();
+      }
+    } catch (e) {
+      console.error('Error computing initial slot:', e);
+    }
+  }
+
+  const [year, setYear] = useState(initialYear);
+  const [month, setMonth] = useState(initialMonth);
+  const [selectedDay, setSelectedDay] = useState<number | null>(initialDay);
+  const [selectedSlot, setSelectedSlot] = useState<BookableSlot | null>(initialSlot);
+  const [duration, setDuration] = useState(initialDuration);
+  const [step, setStep] = useState<'select' | 'confirm' | 'success'>(initialStep);
   const [subject, setSubject] = useState('');
   const [weeklySlots, setWeeklySlots] = useState<Record<string, string[]>>({});
-  const [dateSlots, setDateSlots] = useState<BookableSlot[]>([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [dateSlots30, setDateSlots30] = useState<BookableSlot[]>([]);
+  const [dateSlots60, setDateSlots60] = useState<BookableSlot[]>([]);
+  const [slotsLoading30, setSlotsLoading30] = useState(false);
+  const [slotsLoading60, setSlotsLoading60] = useState(false);
   const [viewerTimezone, setViewerTimezone] = useState(DEFAULT_TIMEZONE);
   const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
   const [bookingError, setBookingError] = useState('');
@@ -51,14 +102,10 @@ export function BookingPage() {
     if (!teacherId) return;
     (async () => {
       try {
-        const data = await getTeacher(teacherId);
+        const token = localStorage.getItem('muallim_access_token') || undefined;
+        const data = await getTeacher(teacherId, token);
         setTeacher(mapProfileToTeacher(data));
-        const sd = data.session_duration || 'both';
-        let durations: ('30' | '60')[] = ['30', '60'];
-        if (sd === '30') durations = ['30'];
-        else if (sd === '60') durations = ['60'];
-        setSessionDurations(durations);
-        setDuration(durations.includes('60') ? 60 : 30);
+        setSessionDurations(['30', '60']);
       } catch (err) {
         console.error('Error fetching teacher profile for booking:', err);
         setError('Failed to load teacher details');
@@ -81,7 +128,7 @@ export function BookingPage() {
       }
       setViewerTimezone(tz);
       try {
-        const avail = await getTeacherAvailability(teacherId, tz);
+        const avail = await getTeacherAvailability(teacherId, tz, token || undefined);
         setTeacherTimezone(avail.timezone);
         setWeeklySlots(avail.slots_by_day_viewer || avail.slots_by_day || {});
       } catch {
@@ -91,56 +138,76 @@ export function BookingPage() {
   }, [teacherId]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const preDay = params.get('day');
-    if (preDay && Object.keys(weeklySlots).length > 0) {
-      const today = new Date();
-      const targetDate = new Date();
-      const dayMap: Record<string, number> = {
-        sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6
-      };
-      const targetDayOfWeek = dayMap[preDay.toLowerCase()];
-      if (targetDayOfWeek !== undefined) {
-        const currentDayOfWeek = today.getDay();
-        let diff = targetDayOfWeek - currentDayOfWeek;
-        if (diff < 0) diff += 7;
-        targetDate.setDate(today.getDate() + diff);
-        setYear(targetDate.getFullYear());
-        setMonth(targetDate.getMonth());
-        setSelectedDay(targetDate.getDate());
-      }
+    if (step === 'select' && teacherId) {
+      navigate(`/teacher/${teacherId}?tab=availability`);
     }
-  }, [weeklySlots]);
+  }, [step, teacherId, navigate]);
 
   useEffect(() => {
     if (!teacherId || !selectedDay) {
-      setDateSlots([]);
+      setDateSlots30([]);
+      setDateSlots60([]);
       return;
     }
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
-    setSlotsLoading(true);
-    setSelectedSlot(null);
+    setSlotsLoading30(true);
+    setSlotsLoading60(true);
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!urlParams.get('time')) {
+      setSelectedSlot(null);
+    }
+    const token = localStorage.getItem('muallim_access_token') || undefined;
+
+    // Fetch 30 min slots
     (async () => {
       try {
-        const res = await getTeacherSlotsForDate(teacherId, dateStr, duration, viewerTimezone);
+        const res = await getTeacherSlotsForDate(teacherId, dateStr, 30, viewerTimezone, token);
         const slots = res.slots.filter(s => s.available);
-        setDateSlots(slots);
+        setDateSlots30(slots);
         
         const params = new URLSearchParams(window.location.search);
         const preTime = params.get('time');
-        if (preTime) {
+        const preDur = params.get('duration');
+        if (preTime && Number(preDur) === 30) {
           const matchingSlot = slots.find(s => s.time === preTime);
           if (matchingSlot) {
+            setDuration(30);
             setSelectedSlot(matchingSlot);
+            setStep('confirm');
           }
         }
       } catch {
-        setDateSlots([]);
+        setDateSlots30([]);
       } finally {
-        setSlotsLoading(false);
+        setSlotsLoading30(false);
       }
     })();
-  }, [teacherId, selectedDay, year, month, duration, viewerTimezone]);
+
+    // Fetch 60 min slots
+    (async () => {
+      try {
+        const res = await getTeacherSlotsForDate(teacherId, dateStr, 60, viewerTimezone, token);
+        const slots = res.slots.filter(s => s.available);
+        setDateSlots60(slots);
+        
+        const params = new URLSearchParams(window.location.search);
+        const preTime = params.get('time');
+        const preDur = params.get('duration');
+        if (preTime && (Number(preDur) === 60 || !preDur)) {
+          const matchingSlot = slots.find(s => s.time === preTime);
+          if (matchingSlot) {
+            setDuration(60);
+            setSelectedSlot(matchingSlot);
+            setStep('confirm');
+          }
+        }
+      } catch {
+        setDateSlots60([]);
+      } finally {
+        setSlotsLoading60(false);
+      }
+    })();
+  }, [teacherId, selectedDay, year, month, viewerTimezone]);
 
   const calendarDays = generateCalendar(year, month);
 
@@ -215,6 +282,10 @@ export function BookingPage() {
 
   const selectedDate = selectedDay ? new Date(year, month, selectedDay) : null;
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const preTime = urlParams.get('time');
+  const isPreselectedLoading = !!(preTime && (slotsLoading30 || slotsLoading60) && !selectedSlot);
+
   if (step === 'success') {
     return (
       <div className="min-h-screen bg-[#F8F6F1]">
@@ -287,29 +358,21 @@ export function BookingPage() {
         </div>
 
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {step === 'select' && (
+          {isPreselectedLoading && (
+            <div className="flex flex-col items-center justify-center min-h-[40vh] bg-white rounded-3xl border border-[rgba(13,27,42,0.06)] p-10 text-[#C8962A]">
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <p className="text-sm text-[#9CA3AF] mt-2">Preparing your checkout details...</p>
+            </div>
+          )}
+
+          {!isPreselectedLoading && step === 'select' && (
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               {/* Calendar + Time */}
               <div className="lg:col-span-3 space-y-5">
-                {/* Duration */}
+                {/* Timezone Message */}
                 <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] p-5">
-                  <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="mb-4">Session Duration</h3>
-                  <div className="flex gap-3">
-                    {sessionDurations.map(d => {
-                      const numDur = Number(d);
-                      return (
-                        <button
-                          key={d}
-                          onClick={() => { setDuration(numDur); setSelectedSlot(null); }}
-                          className={`flex-1 py-3 rounded-xl text-sm border transition-all ${duration === numDur ? 'bg-[#0D1B2A] border-[#0D1B2A] text-white' : 'border-[rgba(13,27,42,0.15)] text-[#6B7280] hover:border-[#0D1B2A]'}`}
-                          style={{ fontWeight: duration === numDur ? 600 : 400 }}
-                        >
-                          {d} min
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-[#9CA3AF] mt-2">
+                  <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="mb-2">Booking Info</h3>
+                  <p className="text-xs text-[#9CA3AF]">
                     Times shown in your timezone ({getTimezoneAbbr(viewerTimezone)})
                   </p>
                 </div>
@@ -370,34 +433,72 @@ export function BookingPage() {
 
                 {/* Time Slots */}
                 {selectedDay && (
-                  <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] p-5">
-                    <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="mb-4">
+                  <div className="bg-white rounded-2xl border border-[rgba(13,27,42,0.06)] p-5 space-y-6">
+                    <h3 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, color: '#0D1B2A' }} className="border-b border-[rgba(13,27,42,0.06)] pb-3">
                       Available Times — {selectedDate?.toLocaleDateString('en-AE', { weekday: 'long', day: 'numeric', month: 'short' })}
                     </h3>
-                    {slotsLoading ? (
-                      <div className="flex items-center justify-center py-6 text-[#C8962A]">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      </div>
-                    ) : dateSlots.length === 0 ? (
-                      <p className="text-center text-[#9CA3AF] text-sm py-4">No available slots for this date</p>
-                    ) : (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {dateSlots.map(slot => (
-                          <button
-                            key={slot.utc}
-                            onClick={() => setSelectedSlot(selectedSlot?.utc === slot.utc ? null : slot)}
-                            className={`py-2.5 rounded-xl text-sm border transition-all ${
-                              selectedSlot?.utc === slot.utc
-                                ? 'bg-[#C8962A] border-[#C8962A] text-white'
-                                : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
-                            }`}
-                            style={{ fontWeight: 500 }}
-                          >
-                            {slot.time}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    
+                    {/* 30 Minutes Slots */}
+                    <div>
+                      <h4 className="text-xs font-bold text-[#0D1B2A]/70 uppercase tracking-wider mb-3">30 Minutes Sessions</h4>
+                      {slotsLoading30 ? (
+                        <div className="flex items-center justify-center py-4 text-[#C8962A]">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : dateSlots30.length === 0 ? (
+                        <p className="text-xs text-[#9CA3AF] italic">No 30-minute sessions available</p>
+                      ) : (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {dateSlots30.map(slot => (
+                            <button
+                              key={`30-${slot.utc}`}
+                              onClick={() => {
+                                setDuration(30);
+                                setSelectedSlot(selectedSlot?.utc === slot.utc && duration === 30 ? null : slot);
+                              }}
+                              className={`py-2 rounded-xl text-xs border transition-all ${
+                                selectedSlot?.utc === slot.utc && duration === 30
+                                  ? 'bg-[#C8962A] border-[#C8962A] text-white font-semibold'
+                                  : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
+                              }`}
+                            >
+                              {slot.time}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 60 Minutes Slots */}
+                    <div className="border-t border-[rgba(13,27,42,0.06)] pt-5">
+                      <h4 className="text-xs font-bold text-[#0D1B2A]/70 uppercase tracking-wider mb-3">60 Minutes Sessions</h4>
+                      {slotsLoading60 ? (
+                        <div className="flex items-center justify-center py-4 text-[#C8962A]">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : dateSlots60.length === 0 ? (
+                        <p className="text-xs text-[#9CA3AF] italic">No 60-minute sessions available</p>
+                      ) : (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {dateSlots60.map(slot => (
+                            <button
+                              key={`60-${slot.utc}`}
+                              onClick={() => {
+                                setDuration(60);
+                                setSelectedSlot(selectedSlot?.utc === slot.utc && duration === 60 ? null : slot);
+                              }}
+                              className={`py-2 rounded-xl text-xs border transition-all ${
+                                selectedSlot?.utc === slot.utc && duration === 60
+                                  ? 'bg-[#C8962A] border-[#C8962A] text-white font-semibold'
+                                  : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
+                              }`}
+                            >
+                              {slot.time}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -531,7 +632,7 @@ export function BookingPage() {
                   )}
 
                   <div className="flex gap-3">
-                    <button onClick={() => setStep('select')} className="flex-1 py-3 border border-[rgba(13,27,42,0.15)] text-[#6B7280] rounded-xl text-sm hover:bg-[#F8F6F1] transition-colors">
+                    <button onClick={() => navigate(`/teacher/${teacherId}?tab=availability`)} className="flex-1 py-3 border border-[rgba(13,27,42,0.15)] text-[#6B7280] rounded-xl text-sm hover:bg-[#F8F6F1] transition-colors">
                       Back
                     </button>
                     <button

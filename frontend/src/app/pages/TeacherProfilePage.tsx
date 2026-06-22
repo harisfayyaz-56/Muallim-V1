@@ -5,7 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { REVIEWS, PLATFORM_FEE_PERCENT } from '../data/mockData';
 import { getTeacher, getProfile } from '../../api/profile';
-import { getTeacherAvailability } from '../../api/availability';
+import { getTeacherAvailability, getTeacherSlotsForDate } from '../../api/availability';
 import { mapProfileToTeacher } from '../utils/mappers';
 import { DAYS_FULL, DAY_LABELS } from '../utils/availability';
 import { getTimezoneAbbr, DEFAULT_TIMEZONE } from '../../utils/preferences';
@@ -26,21 +26,106 @@ export function TeacherProfilePage() {
   const [slotsByDay, setSlotsByDay] = useState<Record<string, any[]>>({});
   const [viewerTimezone, setViewerTimezone] = useState(DEFAULT_TIMEZONE);
   const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
+  const [profileSlots, setProfileSlots] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [daySlotCounts, setDaySlotCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    if (tab === 'availability' || tab === 'about' || tab === 'reviews') {
+      setActiveTab(tab as any);
+      setTimeout(() => {
+        document.getElementById('profile-tabs')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, []);
 
   useEffect(() => {
     if (!id) return;
     (async () => {
       try {
-        const data = await getTeacher(id);
+        const today = new Date();
+        const dayMap: Record<string, number> = {
+          sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6
+        };
+        const token = localStorage.getItem('muallim_access_token') || undefined;
+        
+        const promises = DAYS.map(async (day) => {
+          const targetDayOfWeek = dayMap[day.toLowerCase()];
+          if (targetDayOfWeek !== undefined) {
+            const currentDayOfWeek = today.getDay();
+            let diff = targetDayOfWeek - currentDayOfWeek;
+            if (diff < 0) diff += 7;
+            
+            const targetDate = new Date();
+            targetDate.setDate(today.getDate() + diff);
+            const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+            
+            const res = await getTeacherSlotsForDate(id, dateStr, duration, viewerTimezone || undefined, token);
+            const availableCount = res.slots.filter((s: any) => s.available).length;
+            return { day, count: availableCount };
+          }
+          return { day, count: 0 };
+        });
+
+        const results = await Promise.all(promises);
+        const counts: Record<string, number> = {};
+        results.forEach(({ day, count }) => {
+          counts[day] = count;
+        });
+        setDaySlotCounts(counts);
+      } catch (err) {
+        console.error('Error fetching weekday slot counts:', err);
+      }
+    })();
+  }, [id, duration, viewerTimezone]);
+
+  useEffect(() => {
+    if (!id || !selectedDay) return;
+    (async () => {
+      setSlotsLoading(true);
+      try {
+        const today = new Date();
+        const dayMap: Record<string, number> = {
+          sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6
+        };
+        const targetDayOfWeek = dayMap[selectedDay.toLowerCase()];
+        if (targetDayOfWeek !== undefined) {
+          const currentDayOfWeek = today.getDay();
+          let diff = targetDayOfWeek - currentDayOfWeek;
+          if (diff < 0) diff += 7;
+          
+          const targetDate = new Date();
+          targetDate.setDate(today.getDate() + diff);
+          const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+          
+          const token = localStorage.getItem('muallim_access_token') || undefined;
+          const res = await getTeacherSlotsForDate(id, dateStr, duration, viewerTimezone || undefined, token);
+          const availableList = res.slots.filter((s: any) => s.available).map((s: any) => s.time);
+          setProfileSlots(availableList);
+          setDaySlotCounts(prev => ({ ...prev, [selectedDay]: availableList.length }));
+        }
+      } catch (err) {
+        console.error('Error fetching profile slots:', err);
+        setProfileSlots([]);
+      } finally {
+        setSlotsLoading(false);
+      }
+    })();
+  }, [id, selectedDay, duration, viewerTimezone]);
+
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      try {
+        const token = localStorage.getItem('muallim_access_token') || undefined;
+        const data = await getTeacher(id, token);
         const mapped = mapProfileToTeacher(data);
         setTeacher(mapped);
         
-        const sd = mapped.session_duration || '60';
-        let durations = [30, 60];
-        if (sd === '30') durations = [30];
-        else if (sd === '60') durations = [60];
-        setSessionDurations(durations);
-        setDuration(durations.includes(60) ? 60 : 30);
+        setSessionDurations([30, 60]);
+        setDuration(60);
       } catch (err) {
         console.error('Error fetching teacher profile:', err);
         setError('Failed to load teacher profile');
@@ -63,7 +148,7 @@ export function TeacherProfilePage() {
       }
       setViewerTimezone(tz);
       try {
-        const avail = await getTeacherAvailability(id, tz);
+        const avail = await getTeacherAvailability(id, tz, token || undefined);
         setTeacherTimezone(avail.timezone);
         setSlotsByDay(avail.slots_by_day_viewer || avail.slots_by_day || {});
       } catch {
@@ -128,7 +213,7 @@ export function TeacherProfilePage() {
     }).map((slot: any) => typeof slot === 'string' ? slot : slot.start);
   };
 
-  const availableSlots = getDisplaySlots();
+  const availableSlots = profileSlots;
 
   return (
     <div className="min-h-screen bg-white">
@@ -237,7 +322,7 @@ export function TeacherProfilePage() {
           {/* Main Content */}
           <div className="lg:col-span-2">
             {/* Tabs */}
-            <div className="flex border-b border-[rgba(13,27,42,0.1)] mb-8">
+            <div id="profile-tabs" className="flex border-b border-[rgba(13,27,42,0.1)] mb-8">
               {(['about', 'reviews', 'availability'] as const).map(tab => (
                 <button
                   key={tab}
@@ -357,7 +442,7 @@ export function TeacherProfilePage() {
                 {/* Day Selector */}
                 <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
                   {DAYS.map(day => {
-                    const slots = getSlotsForDay(day);
+                    const count = daySlotCounts[day] !== undefined ? daySlotCounts[day] : getSlotsForDay(day).length;
                     return (
                       <button
                         key={day}
@@ -365,22 +450,25 @@ export function TeacherProfilePage() {
                         className={`flex flex-col items-center px-4 py-3 rounded-xl transition-colors shrink-0 ${
                           selectedDay === day
                             ? 'bg-[#0D1B2A] text-white'
-                            : slots.length === 0
+                            : count === 0
                             ? 'bg-[#F0ECE4] text-[#C9B99A] cursor-default'
                             : 'bg-[#F8F6F1] text-[#6B7280] hover:bg-[#F0ECE4] hover:text-[#0D1B2A]'
                         }`}
                       >
                         <span className="text-xs">{DAY_LABELS[day]}</span>
                         <span className="text-lg" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
-                          {slots.length}
+                          {count}
                         </span>
-                        <span className="text-xs mt-0.5">{slots.length === 0 ? 'Off' : 'slots'}</span>
+                        <span className="text-xs mt-0.5">{count === 0 ? 'Off' : 'slots'}</span>
                       </button>
                     );
                   })}
                 </div>
-
-                {availableSlots.length === 0 ? (
+                {slotsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#C8962A]" />
+                  </div>
+                ) : availableSlots.length === 0 ? (
                   <div className="text-center py-8 text-[#9CA3AF]">
                     <Calendar className="w-10 h-10 mx-auto mb-2 opacity-40" />
                     <p>No availability on {selectedDay}s</p>
@@ -403,17 +491,7 @@ export function TeacherProfilePage() {
                     ))}
                   </div>
                 )}
-                {selectedSlot && (
-                  <div className="mt-6 flex justify-end">
-                    <Link
-                      to={`/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}`}
-                      className="w-full sm:w-auto text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-6 py-3 rounded-xl transition-colors duration-150"
-                      style={{ fontWeight: 600 }}
-                    >
-                      Book Selected Slot ({selectedSlot})
-                    </Link>
-                  </div>
-                )}
+
               </div>
             )}
           </div>
@@ -464,13 +542,27 @@ export function TeacherProfilePage() {
                   </div>
                 </div>
 
-                <Link
-                  to={selectedSlot ? `/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}` : `/book/${teacher.id}`}
-                  className="block w-full text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-4 py-3.5 rounded-xl transition-colors duration-150"
-                  style={{ fontWeight: 600 }}
-                >
-                  {selectedSlot ? `Book Selected Slot (${selectedSlot})` : 'Book a Session'}
-                </Link>
+                {selectedSlot ? (
+                  <Link
+                    to={`/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}&duration=${duration}`}
+                    className="block w-full text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-4 py-3.5 rounded-xl transition-colors duration-150"
+                    style={{ fontWeight: 600 }}
+                  >
+                    Book Selected Slot ({selectedSlot})
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('availability');
+                      document.getElementById('profile-tabs')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="block w-full text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-4 py-3.5 rounded-xl transition-colors duration-150"
+                    style={{ fontWeight: 600 }}
+                  >
+                    Book a Session
+                  </button>
+                )}
 
                 <Link
                   to="/messages"

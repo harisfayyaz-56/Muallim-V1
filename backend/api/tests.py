@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from api.models import UserProfile, Teacher, Booking
 from api.models.bookings import TeacherAvailability
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
 
 @override_settings(DEBUG=True)
 class UserManagementTests(TestCase):
@@ -316,3 +316,64 @@ class UserManagementTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         pending_teacher.refresh_from_db()
         self.assertEqual(pending_teacher.status, 'approved')
+
+    def test_booking_removes_slot_immediately(self):
+        # 1. Use a future date to bypass past-date filtering (e.g. 2028-06-20)
+        # 2028-06-20 is a Tuesday
+        future_date = date(2028, 6, 20)
+        future_date_str = "2028-06-20"
+        future_weekday = "tuesday"
+
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week=future_weekday,
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            is_available=True
+        )
+
+        # Ensure teacher profile session_duration is 'both'
+        self.teacher.session_duration = 'both'
+        self.teacher.save()
+
+        # 2. Query available slots for the future Tuesday
+        slots_url = f'/api/teacher/{self.teacher.id}/slots/'
+        
+        # 30-min duration query
+        resp_30 = self.client.get(slots_url, {'date': future_date_str, 'duration': '30'})
+        self.assertEqual(resp_30.status_code, status.HTTP_200_OK)
+        # Should have two slots: 10:00-10:30 and 10:30-11:00
+        slots_30 = resp_30.data['slots']
+        self.assertEqual(len(slots_30), 2)
+        self.assertEqual(slots_30[0]['time'], '10:00')
+        self.assertEqual(slots_30[1]['time'], '10:30')
+
+        # 3. Create a booking for the first slot (10:00 - 10:30)
+        # student_user books it.
+        # 10:00 in Asia/Dubai (UTC+4) is 06:00 UTC
+        self.student_profile.email_verified = True
+        self.student_profile.save()
+        self.client.force_authenticate(user=self.student_user)
+        booking_url = reverse('booking-list')
+        booking_payload = {
+            'teacher_id': self.teacher.id,
+            'scheduled_date': '2028-06-20T06:00:00Z',
+            'duration_minutes': 30,
+            'subject': 'Math',
+            'amount': 50.0
+        }
+        booking_resp = self.client.post(booking_url, booking_payload, format='json')
+        self.assertEqual(booking_resp.status_code, status.HTTP_201_CREATED)
+
+        # 4. Query slots again - the 10:00 slot must be GONE immediately!
+        resp_30_after = self.client.get(slots_url, {'date': future_date_str, 'duration': '30'})
+        self.assertEqual(resp_30_after.status_code, status.HTTP_200_OK)
+        slots_30_after = resp_30_after.data['slots']
+        self.assertEqual(len(slots_30_after), 1)
+        self.assertEqual(slots_30_after[0]['time'], '10:30')
+
+        # 5. Querying 60-min slots should also reflect the removal (cannot book 60 min if 10:00-10:30 is booked)
+        resp_60_after = self.client.get(slots_url, {'date': future_date_str, 'duration': '60'})
+        self.assertEqual(resp_60_after.status_code, status.HTTP_200_OK)
+        slots_60_after = resp_60_after.data['slots']
+        self.assertEqual(len(slots_60_after), 0)
