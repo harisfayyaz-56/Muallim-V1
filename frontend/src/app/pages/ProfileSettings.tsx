@@ -399,6 +399,10 @@ export function ProfileSettings() {
                             setPasswordError('Please enter a password');
                             return;
                           }
+                          if (passwordForm.newPassword.length < 8) {
+                            setPasswordError('Password must be at least 8 characters long');
+                            return;
+                          }
                           try {
                             const token = localStorage.getItem('muallim_access_token');
                             if (!token) throw new Error('Not authenticated');

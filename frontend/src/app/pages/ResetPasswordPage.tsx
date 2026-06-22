@@ -20,6 +20,11 @@ export function ResetPasswordPage() {
     e.preventDefault();
     setError('');
 
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
       return;
