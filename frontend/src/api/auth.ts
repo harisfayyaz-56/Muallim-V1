@@ -63,6 +63,26 @@ export async function verifyEmail(payload: VerifyEmailPayload) {
   return res.json();
 }
 
+// Set password by email
+export async function setPasswordByEmail(payload: { email: string; password: string }) {
+  const res = await fetch(`${API_URL}/auth/set-password-by-email/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let errMsg = 'Failed to set password';
+    try {
+      const data = await res.json();
+      errMsg = data.detail || errMsg;
+    } catch {
+      errMsg = `Server error (${res.status}): ${res.statusText || 'Failed to set password'}`;
+    }
+    throw new Error(errMsg);
+  }
+  return res.json();
+}
+
 // Resend verification email
 export async function resendVerification(email: string) {
   const res = await fetch(`${API_URL}/auth/resend-verification/`, {

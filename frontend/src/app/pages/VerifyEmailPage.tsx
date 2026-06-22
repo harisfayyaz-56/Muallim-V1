@@ -14,6 +14,13 @@ export function VerifyEmailPage() {
   const navigate = useNavigate();
   const { setTokens } = useAuth();
 
+  const [verifiedEmail, setVerifiedEmail] = useState('');
+  const [verifiedTokens, setVerifiedTokens] = useState<{ access: string; refresh: string } | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [setPasswordError, setSetPasswordError] = useState('');
+
   useEffect(() => {
     const uid = searchParams.get('uid');
     const token = searchParams.get('token');
@@ -28,16 +35,48 @@ export function VerifyEmailPage() {
     try {
       const response = await authAPI.verifyEmail({ uid, token });
       setStatus('success');
-
-      // Auto-login: store tokens via AuthContext and redirect to dashboard
+      if (response.user && response.user.email) {
+        setVerifiedEmail(response.user.email);
+      }
       if (response.access && response.refresh) {
-        setTokens(response.access, response.refresh);
-        setTimeout(() => navigate('/dashboard'), 2000);
+        setVerifiedTokens({ access: response.access, refresh: response.refresh });
       }
     } catch (err: any) {
       setStatus('error');
       setErrorMessage(err.message || 'Email verification failed');
       console.error(err);
+    }
+  };
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSetPasswordError('');
+
+    if (password !== confirmPassword) {
+      setSetPasswordError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 8) {
+      setSetPasswordError('Password must be at least 8 characters long');
+      return;
+    }
+
+    setSettingPassword(true);
+    try {
+      const userEmail = verifiedEmail || email;
+      await authAPI.setPasswordByEmail({ email: userEmail, password });
+      
+      if (verifiedTokens) {
+        setTokens(verifiedTokens.access, verifiedTokens.refresh);
+        navigate('/dashboard');
+      } else {
+        navigate('/login');
+      }
+    } catch (err: any) {
+      setSetPasswordError(err.message || 'Failed to set password');
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -165,12 +204,62 @@ export function VerifyEmailPage() {
               <h1 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: '1.75rem', color: '#0D1B2A' }}>
                 Email verified!
               </h1>
-              <p className="text-[#6B7280] mt-3 text-sm leading-relaxed">
-                Your account is active. Redirecting you to your dashboard...
+              <p className="text-[#6B7280] mt-3 text-sm leading-relaxed mb-6">
+                Your account is active. Please set a password to secure your account.
               </p>
-              <div className="mt-4 flex justify-center">
-                <Loader className="w-5 h-5 text-[#C8962A] animate-spin" />
-              </div>
+
+              {setPasswordError && (
+                <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm text-left">
+                  {setPasswordError}
+                </div>
+              )}
+
+              <form onSubmit={handleSetPassword} className="space-y-4 text-left">
+                <div>
+                  <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    disabled={settingPassword}
+                    required
+                    className="w-full px-4 py-3 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all disabled:opacity-50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-[#0D1B2A] mb-1.5" style={{ fontWeight: 500 }}>
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm password"
+                    disabled={settingPassword}
+                    required
+                    className="w-full px-4 py-3 rounded-xl border border-[rgba(13,27,42,0.15)] bg-white text-[#0D1B2A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#C8962A]/30 focus:border-[#C8962A] transition-all disabled:opacity-50"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={settingPassword}
+                  className="w-full py-3 bg-[#C8962A] text-white rounded-xl font-semibold hover:bg-[#B07F1F] transition-colors duration-150 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {settingPassword ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Setting password...
+                    </>
+                  ) : (
+                    'Set Password & Continue'
+                  )}
+                </button>
+              </form>
             </>
           )}
 

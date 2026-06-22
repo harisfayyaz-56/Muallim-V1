@@ -16,6 +16,7 @@ urlpatterns = [
     path('health/', views.health_check),
     path('auth/register/', auth_views.RegisterView.as_view(), name='api-register'),
     path('auth/verify-email/', auth_views.VerifyEmailView.as_view(), name='api-verify-email'),
+    path('auth/set-password-by-email/', auth_views.SetPasswordByEmailView.as_view(), name='api-set-password-by-email'),
     path('auth/resend-verification/', auth_views.ResendVerificationEmailView.as_view(), name='api-resend-verification'),
     path('auth/password-reset/', auth_views.PasswordResetRequestView.as_view(), name='api-password-reset'),
     path('auth/password-reset-confirm/', auth_views.PasswordResetConfirmView.as_view(), name='api-password-reset-confirm'),
