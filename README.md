@@ -8,8 +8,9 @@ Muallim is a UAE-focused micro-learning marketplace connecting students with tea
 - Email Verification: Secure verification process required before booking or teaching.
 - Admin Panel: Verification queue for reviewing teacher applications with support for approval and custom rejection reasons.
 - Profile Settings: Custom profile pictures, bio details, location settings, and timezone management.
-- Availability Management: Teachers can set a recurring weekly availability grid using 1-hour slots.
-- Real-Time Slot Booking: Dynamic calendar booking screen showing available times in the viewer's local timezone.
+- Availability Management: Teachers can set a recurring weekly availability grid using 30-minute or 60-minute slots, configuring their primary duration setting (30 or 60 minutes) which default-selects the booking length for students.
+- Strict Session Duration Isolation: 30-minute and 60-minute availability blocks generate distinct, isolated booking slots. The system prevents contiguous 30-minute blocks from merging into 60-minute slots or 60-minute blocks from splitting into 30-minute slots.
+- Real-Time Slot Booking: Dynamic calendar booking screen showing available times in the viewer's local timezone. Students can select between 30-minute and 60-minute session tabs if both availability blocks are configured.
 - Double-Booking Prevention: Automatic backend and frontend slot checking. Booked slots are immediately removed from the available list.
 - Automated Meeting Links: Randomly generated Google Meet style meeting URLs are attached to confirmed bookings.
 - Feedback System: Students can review and rate teachers on communication, punctuality, and teaching quality.
