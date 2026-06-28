@@ -104,7 +104,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
       const formData = new FormData();
       formData.append('profile_picture', file);
 
-      const response = await fetch('http://localhost:8000/api/profile/avatar/', {
+      const response = await fetch('/api/profile/avatar/', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

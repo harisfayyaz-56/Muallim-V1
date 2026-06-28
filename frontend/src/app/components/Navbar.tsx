@@ -15,6 +15,7 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [isLoggedInState, setIsLoggedInState] = useState(isLoggedIn);
+  const [unreadCount, setUnreadCount] = useState(0);
   const location = useLocation();
 
   useEffect(() => {
@@ -30,6 +31,15 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
       try {
         const data = await getProfile(token);
         setProfile(data);
+        
+        try {
+          const { getThreads } = await import('../../api/chat');
+          const threads = await getThreads(token);
+          const totalUnread = threads.reduce((sum, t) => sum + (t.unreadCount || 0), 0);
+          setUnreadCount(totalUnread);
+        } catch (chatErr) {
+          console.error('Navbar failed to fetch unread threads count:', chatErr);
+        }
       } catch (err) {
         console.error('Navbar failed to load profile:', err);
       }
@@ -109,10 +119,12 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
                     }`} />
                   </div>
                 </Link>
-                <button className="relative p-2 text-[#6B7280] hover:text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg transition-colors">
+                <Link to="/messages" className="relative p-2 text-[#6B7280] hover:text-[#0D1B2A] hover:bg-[#F8F6F1] rounded-lg transition-colors">
                   <Bell className="w-5 h-5" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#C8962A] rounded-full" />
-                </button>
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#C8962A] rounded-full" />
+                  )}
+                </Link>
                 <div className="relative">
                   <button
                     onClick={() => setProfileOpen(!profileOpen)}
@@ -137,7 +149,7 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
                         </Link>
                       )}
                       <Link to="/messages" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
-                        <Bell className="w-4 h-4 text-[#6B7280]" /> Messages <span className="ml-auto bg-[#C8962A] text-white text-xs px-1.5 py-0.5 rounded-full">2</span>
+                        <Bell className="w-4 h-4 text-[#6B7280]" /> Messages {unreadCount > 0 && <span className="ml-auto bg-[#C8962A] text-white text-xs px-1.5 py-0.5 rounded-full">{unreadCount}</span>}
                       </Link>
                       <Link to="/settings" className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#0D1B2A] hover:bg-[#F8F6F1] transition-colors" onClick={() => setProfileOpen(false)}>
                         <Settings className="w-4 h-4 text-[#6B7280]" /> Settings

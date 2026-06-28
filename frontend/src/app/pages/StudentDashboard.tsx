@@ -62,6 +62,7 @@ export function StudentDashboard() {
             status: isActive ? 'upcoming' : b.status,
             totalPaid: Number(b.amount),
             meetingLink: b.meeting_link,
+            paymentStatus: b.payment_status,
           };
 
           if (isActive) {
@@ -188,13 +189,20 @@ export function StudentDashboard() {
                                 <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{session.subject}</p>
                                 <p className="text-[#9CA3AF] text-xs mt-0.5">with {session.teacherName}</p>
                               </div>
-                              <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs ${
-                                session.status === 'upcoming' ? 'bg-emerald-100 text-emerald-700' :
-                                session.status === 'completed' ? 'bg-[#F8F6F1] text-[#6B7280]' :
-                                'bg-red-100 text-red-600'
-                              }`} style={{ fontWeight: 500 }}>
-                                {session.status}
-                              </span>
+                              <div className="flex gap-2 items-center">
+                                <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs ${
+                                  session.status === 'upcoming' ? 'bg-emerald-100 text-emerald-700' :
+                                  session.status === 'completed' ? 'bg-[#F8F6F1] text-[#6B7280]' :
+                                  'bg-red-100 text-red-600'
+                                }`} style={{ fontWeight: 500 }}>
+                                  {session.status}
+                                </span>
+                                {session.paymentStatus && (
+                                  <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold uppercase tracking-wider">
+                                    {session.paymentStatus.replace('_', ' ')}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="flex items-center gap-4 mt-2 flex-wrap">
                               <span className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">

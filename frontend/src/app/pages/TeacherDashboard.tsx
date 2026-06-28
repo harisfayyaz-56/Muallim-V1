@@ -92,6 +92,7 @@ export function TeacherDashboard() {
             totalPaid: Number(b.amount),
             meetingLink: b.meeting_link,
             scheduledDate: b.scheduled_date,
+            paymentStatus: b.payment_status,
           };
 
           if (isActive) {
@@ -295,11 +296,18 @@ export function TeacherDashboard() {
                         <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{session.subject}</p>
                         <p className="text-[#9CA3AF] text-xs mt-0.5">{session.date} · {session.time} · {session.duration}min · Student: {session.studentName}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end gap-1">
                         <p className="text-[#C8962A] text-sm" style={{ fontWeight: 600 }}>AED {session.totalPaid}</p>
-                        <span className={`text-xs ${session.status === 'upcoming' ? 'text-emerald-600' : 'text-[#9CA3AF]'}`}>
-                          {session.status}
-                        </span>
+                        <div className="flex gap-2 items-center">
+                          <span className={`text-xs ${session.status === 'upcoming' ? 'text-emerald-600' : 'text-[#9CA3AF]'}`}>
+                            {session.status}
+                          </span>
+                          {session.paymentStatus && (
+                            <span className="shrink-0 px-2 py-0.5 rounded-full text-[9px] bg-amber-100 text-amber-800 font-bold uppercase tracking-wider">
+                              {session.paymentStatus.replace('_', ' ')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {session.status === 'upcoming' && session.meetingLink && (
                         <a href={session.meetingLink} className="p-2 hover:bg-[#F8F6F1] rounded-lg transition-colors" target="_blank" rel="noopener noreferrer">
