@@ -3,8 +3,26 @@ from django.contrib.auth.models import User
 from .bookings import Booking
 
 
+class Thread(models.Model):
+    """Conversation thread between a student and a teacher"""
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='student_threads')
+    teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='teacher_threads')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Thread"
+        verbose_name_plural = "Threads"
+        unique_together = ('student', 'teacher')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"Thread: Student {self.student.username} <-> Teacher {self.teacher.username}"
+
+
 class Message(models.Model):
     """Direct messages between students and teachers"""
+    thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='messages', null=True, blank=True)
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='messages_sent')
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='messages_received')
     content = models.TextField()
@@ -19,6 +37,7 @@ class Message(models.Model):
         verbose_name = "Message"
         verbose_name_plural = "Messages"
         ordering = ['-created_at']
+
 
 
 class Dispute(models.Model):

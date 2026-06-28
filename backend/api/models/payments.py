@@ -12,6 +12,11 @@ class Payment(models.Model):
         ('completed', 'Completed'),
         ('failed', 'Failed'),
         ('refunded', 'Refunded'),
+        ('paid_mock', 'Paid Mock'),
+        ('holding_mock', 'Holding Mock'),
+        ('failed_mock', 'Failed Mock'),
+        ('refunded_mock', 'Refunded Mock'),
+        ('released_mock', 'Released Mock'),
     )
 
     PAYMENT_METHOD_CHOICES = (
@@ -19,6 +24,7 @@ class Payment(models.Model):
         ('paypal', 'PayPal'),
         ('bank_transfer', 'Bank Transfer'),
         ('wallet', 'Wallet'),
+        ('mock', 'Mock Checkout'),
     )
 
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='payment')

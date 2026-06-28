@@ -11,7 +11,7 @@ Organized into logical modules:
 from .users import UserProfile, Teacher, Student
 from .bookings import TeacherAvailability, Booking, Review
 from .payments import Payment, Wallet, WalletTransaction
-from .support import Message, Dispute, AdminRequest
+from .support import Thread, Message, Dispute, AdminRequest
 
 __all__ = [
     'UserProfile',
@@ -23,6 +23,7 @@ __all__ = [
     'Payment',
     'Wallet',
     'WalletTransaction',
+    'Thread',
     'Message',
     'Dispute',
     'AdminRequest',

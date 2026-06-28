@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
     UserProfile, Teacher, Student, TeacherAvailability,
-    Booking, Review, Message, Payment, Wallet, WalletTransaction,
+    Booking, Review, Thread, Message, Payment, Wallet, WalletTransaction,
     Dispute, AdminRequest
 )
 
@@ -172,6 +172,17 @@ class ReviewAdmin(admin.ModelAdmin):
     def rating_stars(self, obj):
         return format_html('★ ' * obj.rating + '☆ ' * (5 - obj.rating))
     rating_stars.short_description = 'Rating'
+
+
+# =====================
+# Thread Admin
+# =====================
+
+@admin.register(Thread)
+class ThreadAdmin(admin.ModelAdmin):
+    list_display = ('id', 'student', 'teacher', 'created_at', 'updated_at')
+    list_filter = ('created_at', 'updated_at')
+    search_fields = ('student__username', 'teacher__username')
 
 
 # =====================
