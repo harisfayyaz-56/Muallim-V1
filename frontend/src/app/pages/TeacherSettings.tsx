@@ -33,8 +33,8 @@ export function TeacherSettings() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [hasTeacherProfile, setHasTeacherProfile] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
-  const [sessionDurationSetting, setSessionDurationSetting] = useState<'30' | '60' | 'both'>('30');
-  const [sessionDuration, setSessionDuration] = useState<30 | 60>(30);
+  const [sessionDurationSetting, setSessionDurationSetting] = useState<'30' | '60'>('60');
+  const [sessionDuration, setSessionDuration] = useState<30 | 60>(60);
   const [teacherTimezone, setTeacherTimezone] = useState('Asia/Dubai');
   
   // Custom availability state variables
@@ -570,21 +570,8 @@ export function TeacherSettings() {
                   <h2 style={{ fontFamily: 'Fraunces, serif', fontWeight: 600, fontSize: '1.1rem', color: '#0D1B2A' }}>Weekly Availability</h2>
                   <p className="text-[#9CA3AF] text-xs mt-0.5">Manage your recurring session availability slots.</p>
                 </div>
-                <div className="flex gap-2 bg-[#F8F6F1] rounded-xl p-1">
-                  {[30, 60].map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => {
-                        setSessionDuration(d as 30 | 60);
-                        setSessionDurationSetting(String(d) as '30' | '60');
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${sessionDuration === d ? 'bg-white text-[#0D1B2A] shadow-sm' : 'text-[#9CA3AF]'}`}
-                      style={{ fontWeight: sessionDuration === d ? 600 : 400 }}
-                    >
-                      {`${d}min`}
-                    </button>
-                  ))}
+                <div className="bg-[#0D1B2A]/5 text-[#0D1B2A] px-3 py-1.5 rounded-xl text-xs font-semibold">
+                  {sessionDurationSetting}min sessions
                 </div>
               </div>
 

@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = '/api';
 
 export interface AvailabilityGrid {
   Mon: string[];
@@ -12,7 +12,7 @@ export interface AvailabilityGrid {
 
 export interface TeacherAvailabilityData {
   timezone: string;
-  session_duration: '30' | '60' | 'both';
+  session_duration: '30' | '60';
   grid: AvailabilityGrid;
   slots_by_day?: Record<string, string[]>;
   slots_by_day_viewer?: Record<string, string[]>;
@@ -40,6 +40,7 @@ export interface BookingPayload {
   duration_minutes: number;
   amount: string;
   description?: string;
+  notes?: string;
 }
 
 export interface Booking {
@@ -67,7 +68,7 @@ export const getMyAvailability = async (token: string): Promise<TeacherAvailabil
 
 export const updateMyAvailability = async (
   token: string,
-  data: { grid: AvailabilityGrid; session_duration: '30' | '60' | 'both' }
+  data: { grid: AvailabilityGrid; session_duration: '30' | '60' }
 ): Promise<TeacherAvailabilityData> => {
   const response = await fetch(`${API_BASE}/teacher/me/availability/`, {
     method: 'PATCH',

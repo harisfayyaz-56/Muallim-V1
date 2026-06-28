@@ -3,7 +3,7 @@
  * Handles user profile and timezone updates
  */
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = '/api';
 
 export interface UserProfile {
   id: number;
@@ -210,7 +210,7 @@ export interface TeacherProfile {
   email?: string;
   avatar?: string;
   location?: string;
-  session_duration?: '30' | '60' | 'both';
+  session_duration?: '30' | '60';
 }
 
 /**
