@@ -47,7 +47,7 @@ class UserManagementTests(TestCase):
             user=self.teacher_user,
             hourly_rate=100.0,
             status='approved',
-            session_duration='both',
+            session_duration='60',
             qualifications='Degree',
             experience_level='5-10',
             subjects='Math',
@@ -158,7 +158,8 @@ class UserManagementTests(TestCase):
             'scheduled_date': '2026-06-20T06:00:00Z', # 06:00 UTC = 10:00 Asia/Dubai
             'duration_minutes': 60,
             'subject': 'Math',
-            'amount': 100.0
+            'amount': 100.0,
+            'notes': 'I want to learn calculus.'
         }
 
         # 1. Unverified user login & try booking
@@ -257,7 +258,8 @@ class UserManagementTests(TestCase):
             'scheduled_date': '2026-06-20T06:00:00Z', # 10:00 Asia/Dubai
             'duration_minutes': 60,
             'subject': 'Math',
-            'amount': 100.0
+            'amount': 100.0,
+            'notes': 'Self study'
         }
 
         # Authenticate as teacher and try to book themselves
@@ -328,12 +330,19 @@ class UserManagementTests(TestCase):
             teacher=self.teacher,
             day_of_week=future_weekday,
             start_time=time(10, 0),
+            end_time=time(10, 30),
+            is_available=True
+        )
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week=future_weekday,
+            start_time=time(10, 30),
             end_time=time(11, 0),
             is_available=True
         )
 
-        # Ensure teacher profile session_duration is 'both'
-        self.teacher.session_duration = 'both'
+        # Ensure teacher profile session_duration is '30'
+        self.teacher.session_duration = '30'
         self.teacher.save()
 
         # 2. Query available slots for the future Tuesday
@@ -360,7 +369,8 @@ class UserManagementTests(TestCase):
             'scheduled_date': '2028-06-20T06:00:00Z',
             'duration_minutes': 30,
             'subject': 'Math',
-            'amount': 50.0
+            'amount': 50.0,
+            'notes': 'Checking availability removal'
         }
         booking_resp = self.client.post(booking_url, booking_payload, format='json')
         self.assertEqual(booking_resp.status_code, status.HTTP_201_CREATED)
@@ -377,3 +387,318 @@ class UserManagementTests(TestCase):
         self.assertEqual(resp_60_after.status_code, status.HTTP_200_OK)
         slots_60_after = resp_60_after.data['slots']
         self.assertEqual(len(slots_60_after), 0)
+
+    def test_booking_requires_learning_notes(self):
+        # Create a weekly availability
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='saturday',
+            start_time=time(14, 0),
+            end_time=time(15, 0),
+            is_available=True
+        )
+
+        self.student_profile.email_verified = True
+        self.student_profile.is_suspended = False
+        self.student_profile.save()
+        self.client.force_authenticate(user=self.student_user)
+
+        booking_url = reverse('booking-list')
+        
+        # Try booking without notes or description
+        booking_payload_invalid = {
+            'teacher_id': self.teacher.id,
+            'scheduled_date': '2026-06-20T10:00:00Z', # 14:00 Asia/Dubai
+            'duration_minutes': 60,
+            'subject': 'Math',
+            'amount': 100.0
+        }
+        
+        response = self.client.post(booking_url, booking_payload_invalid, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('notes', response.data)
+        self.assertIn('required', response.data['notes'][0])
+
+        # Try booking with notes -> should succeed
+        booking_payload_valid = {
+            'teacher_id': self.teacher.id,
+            'scheduled_date': '2026-06-20T10:00:00Z', # 14:00 Asia/Dubai
+            'duration_minutes': 60,
+            'subject': 'Math',
+            'amount': 100.0,
+            'notes': 'I want to study algebra.'
+        }
+        response = self.client.post(booking_url, booking_payload_valid, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['notes'], 'I want to study algebra.')
+        
+        # Verify payment details are automatically recorded in mock escrow/holding state
+        from api.models.payments import Payment
+        from decimal import Decimal
+        payment = Payment.objects.get(booking_id=response.data['id'])
+        self.assertEqual(payment.payment_status, 'holding_mock')
+        self.assertEqual(payment.payment_method, 'mock')
+        self.assertEqual(payment.amount, Decimal('100.00'))
+        self.assertEqual(payment.commission, Decimal('5.00'))
+        self.assertEqual(payment.teacher_earns, Decimal('95.00'))
+        self.assertEqual(response.data['payment_status'], 'holding_mock')
+        self.assertEqual(response.data['payment_method'], 'mock')
+
+    def test_teacher_session_duration_restrictions(self):
+        # Create a weekly availability on Tuesday (both 30-min and 60-min blocks)
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(10, 0),
+            end_time=time(10, 30),
+            is_available=True
+        )
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(11, 0),
+            end_time=time(12, 0),
+            is_available=True
+        )
+
+        future_date_str = '2028-06-20' # A Tuesday
+        slots_url = f'/api/teacher/{self.teacher.id}/slots/'
+        
+        # 30-min query should return exactly 1 slot (10:00)
+        resp_30 = self.client.get(slots_url, {'date': future_date_str, 'duration': '30'})
+        self.assertEqual(resp_30.status_code, status.HTTP_200_OK)
+        slots_30 = resp_30.data['slots']
+        self.assertEqual(len(slots_30), 1)
+        self.assertEqual(slots_30[0]['time'], '10:00')
+
+        # 60-min query should return exactly 1 slot (11:00)
+        resp_60 = self.client.get(slots_url, {'date': future_date_str, 'duration': '60'})
+        self.assertEqual(resp_60.status_code, status.HTTP_200_OK)
+        slots_60 = resp_60.data['slots']
+        self.assertEqual(len(slots_60), 1)
+        self.assertEqual(slots_60[0]['time'], '11:00')
+
+    def test_both_session_durations_flexible_starts(self):
+        # Configure teacher to accept 60-min durations
+        self.teacher.session_duration = '60'
+        self.teacher.save()
+
+        # Create two 60-min blocks
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            is_available=True
+        )
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(11, 0),
+            end_time=time(12, 0),
+            is_available=True
+        )
+        # Create two 30-min blocks
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(12, 0),
+            end_time=time(12, 30),
+            is_available=True
+        )
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(12, 30),
+            end_time=time(13, 0),
+            is_available=True
+        )
+
+        future_date_str = '2028-06-20' # A Tuesday
+        slots_url = f'/api/teacher/{self.teacher.id}/slots/'
+
+        # Query 60-min slots - should return 2 slots: 10:00 and 11:00
+        resp_60 = self.client.get(slots_url, {'date': future_date_str, 'duration': '60'})
+        self.assertEqual(resp_60.status_code, status.HTTP_200_OK)
+        slots_60 = resp_60.data['slots']
+        self.assertEqual(len(slots_60), 2)
+        self.assertEqual(slots_60[0]['time'], '10:00')
+        self.assertEqual(slots_60[1]['time'], '11:00')
+
+        # Book 10:00 - 11:00 (60 minutes)
+        self.student_profile.email_verified = True
+        self.student_profile.save()
+        self.client.force_authenticate(user=self.student_user)
+        booking_url = reverse('booking-list')
+        
+        # 10:00 in Asia/Dubai is 06:00 UTC
+        booking_payload = {
+            'teacher_id': self.teacher.id,
+            'scheduled_date': '2028-06-20T06:00:00Z',
+            'duration_minutes': 60,
+            'subject': 'Math',
+            'amount': 100.0,
+            'notes': 'Flexible booking start'
+        }
+        booking_resp = self.client.post(booking_url, booking_payload, format='json')
+        self.assertEqual(booking_resp.status_code, status.HTTP_201_CREATED)
+
+        # Query 60-min slots again - only 11:00 should remain
+        resp_60_after = self.client.get(slots_url, {'date': future_date_str, 'duration': '60'})
+        self.assertEqual(len(resp_60_after.data['slots']), 1)
+        self.assertEqual(resp_60_after.data['slots'][0]['time'], '11:00')
+
+        resp_30_after = self.client.get(slots_url, {'date': future_date_str, 'duration': '30'})
+        slots_30 = resp_30_after.data['slots']
+        self.assertEqual(len(slots_30), 2)
+        self.assertEqual(slots_30[0]['time'], '12:00')
+        self.assertEqual(slots_30[1]['time'], '12:30')
+
+    def test_contiguous_slots_merging(self):
+        # Configure teacher to accept 60-min durations
+        self.teacher.session_duration = '60'
+        self.teacher.save()
+
+        # Create back-to-back 30-min availability slots: 10:00 - 10:30 and 10:30 - 11:00
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(10, 0),
+            end_time=time(10, 30),
+            is_available=True
+        )
+        TeacherAvailability.objects.create(
+            teacher=self.teacher,
+            day_of_week='tuesday',
+            start_time=time(10, 30),
+            end_time=time(11, 0),
+            is_available=True
+        )
+
+        future_date_str = '2028-06-20'  # A Tuesday
+        slots_url = f'/api/teacher/{self.teacher.id}/slots/'
+
+        # Test 1: Set profile to '60'. Merging should not happen, so 60-min query returns 0.
+        self.teacher.session_duration = '60'
+        self.teacher.save()
+        resp_60 = self.client.get(slots_url, {'date': future_date_str, 'duration': '60'})
+        self.assertEqual(len(resp_60.data['slots']), 0)
+
+        # Test 2: Set profile to '30'. 30-min query should return 2 slots.
+        self.teacher.session_duration = '30'
+        self.teacher.save()
+        resp_30 = self.client.get(slots_url, {'date': future_date_str, 'duration': '30'})
+        self.assertEqual(len(resp_30.data['slots']), 2)
+        self.assertEqual(resp_30.data['slots'][0]['time'], '10:00')
+        self.assertEqual(resp_30.data['slots'][1]['time'], '10:30')
+
+
+class ChatTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        # Create student user
+        self.student_user = User.objects.create_user(
+            username='student_chat',
+            email='student_chat@example.com',
+            password='password123',
+            first_name='John',
+            last_name='Doe'
+        )
+        self.student_profile = UserProfile.objects.create(
+            user=self.student_user,
+            user_type='student',
+            email_verified=True,
+            is_suspended=False,
+            timezone='Asia/Dubai'
+        )
+
+        # Create teacher user
+        self.teacher_user = User.objects.create_user(
+            username='teacher_chat',
+            email='teacher_chat@example.com',
+            password='password123',
+            first_name='Jane',
+            last_name='Smith'
+        )
+        self.teacher_profile = UserProfile.objects.create(
+            user=self.teacher_user,
+            user_type='teacher',
+            email_verified=True,
+            is_suspended=False,
+            timezone='Asia/Dubai'
+        )
+        self.teacher = Teacher.objects.create(
+            user=self.teacher_user,
+            hourly_rate=100.0,
+            status='approved',
+            session_duration='60',
+            qualifications='Degree',
+            experience_level='5-10',
+            subjects='Math',
+            languages='English'
+        )
+
+    def test_chat_flow_and_contact_sharing_validation(self):
+        # 1. Start thread
+        self.client.force_authenticate(user=self.student_user)
+        start_url = '/api/chat/threads/start/'
+        response = self.client.post(start_url, {'teacher_id': self.teacher.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        thread_id = response.data['id']
+        
+        # Verify student-teacher unique thread
+        response2 = self.client.post(start_url, {'teacher_id': self.teacher.id}, format='json')
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response2.data['id'], thread_id)
+        
+        # 2. Get threads list
+        threads_url = '/api/chat/threads/'
+        list_resp = self.client.get(threads_url)
+        self.assertEqual(list_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_resp.data), 1)
+        self.assertEqual(list_resp.data[0]['participantName'], 'Jane Smith')
+        self.assertEqual(list_resp.data[0]['participantRole'], 'teacher')
+
+        # 3. Send valid message
+        send_url = f'/api/chat/threads/{thread_id}/send_message/'
+        msg_resp = self.client.post(send_url, {'content': 'Hello, teacher! I would like to learn Math.'}, format='json')
+        self.assertEqual(msg_resp.status_code, status.HTTP_201_CREATED)
+        
+        # Verify thread lists reflect message
+        list_resp = self.client.get(threads_url)
+        self.assertEqual(list_resp.data[0]['lastMessage'], 'Hello, teacher! I would like to learn Math.')
+        
+        # 4. Check recipient unread count
+        self.client.force_authenticate(user=self.teacher_user)
+        list_resp = self.client.get(threads_url)
+        self.assertEqual(list_resp.data[0]['unreadCount'], 1)
+        self.assertEqual(list_resp.data[0]['participantRole'], 'student')
+        
+        # Mark read on retrieve
+        detail_url = f'/api/chat/threads/{thread_id}/'
+        detail_resp = self.client.get(detail_url)
+        self.assertEqual(detail_resp.status_code, status.HTTP_200_OK)
+        
+        # Check unread count is 0
+        list_resp = self.client.get(threads_url)
+        self.assertEqual(list_resp.data[0]['unreadCount'], 0)
+
+        # 5. Send message with blocked contact details
+        # Reset auth to student
+        self.client.force_authenticate(user=self.student_user)
+        
+        # Block email
+        email_resp = self.client.post(send_url, {'content': 'My email is test@gmail.com'}, format='json')
+        self.assertEqual(email_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', email_resp.data['detail'].lower())
+
+        # Block phone number
+        phone_resp = self.client.post(send_url, {'content': 'Call me at +971-50-1234567'}, format='json')
+        self.assertEqual(phone_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('phone', phone_resp.data['detail'].lower())
+
+        # Block meeting link
+        link_resp = self.client.post(send_url, {'content': 'Let\'s meet on zoom.us/j/123456'}, format='json')
+        self.assertEqual(link_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('external meeting', link_resp.data['detail'].lower())
+
