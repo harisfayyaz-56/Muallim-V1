@@ -19,10 +19,10 @@ print(f"DATABASE_URL: {db_url}")
 try:
     print("\n[Method 1] Trying direct psycopg2 connection...")
     conn = psycopg2.connect(db_url)
-    print("✓ Connected successfully!")
+    print("[OK] Connected successfully!")
     conn.close()
 except Exception as e:
-    print(f"✗ Failed: {type(e).__name__}: {e}")
+    print(f"[FAIL] Failed: {type(e).__name__}: {e}")
 
 # Try method 2: With explicit host/port/user/password
 try:
@@ -38,10 +38,10 @@ try:
         sslmode='require',
         connect_timeout=10
     )
-    print("✓ Connected successfully!")
+    print("[OK] Connected successfully!")
     conn.close()
 except Exception as e:
-    print(f"✗ Failed: {type(e).__name__}: {e}")
+    print(f"[FAIL] Failed: {type(e).__name__}: {e}")
 
 # Try method 3: Using libpq environment variables
 try:
@@ -50,9 +50,9 @@ try:
     os.environ['PGSSLMODE'] = 'require'
     
     conn = psycopg2.connect(db_url)
-    print("✓ Connected successfully!")
+    print("[OK] Connected successfully!")
     conn.close()
 except Exception as e:
-    print(f"✗ Failed: {type(e).__name__}: {e}")
+    print(f"[FAIL] Failed: {type(e).__name__}: {e}")
 
 print("\n[Summary] All connection methods failed due to DNS resolution issues.")

@@ -1,5 +1,6 @@
 from django.http import JsonResponse
 from django.db import connection
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -289,11 +290,39 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         import random
+        import uuid
+        from decimal import Decimal
+        from django.utils import timezone
+        from .models.payments import Payment
+        
         # Generate a random 10-letter code for Google Meet
         code = "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=10))
         formatted_code = f"{code[:3]}-{code[3:7]}-{code[7:]}"
         meeting_link = f"https://meet.google.com/abc-{formatted_code}"
-        serializer.save(student=self.request.user, status='confirmed', meeting_link=meeting_link)
+        
+        booking = serializer.save(
+            student=self.request.user, 
+            status='confirmed', 
+            meeting_link=meeting_link
+        )
+        
+        # Create corresponding mock payment record (mock escrow / holding_mock)
+        amount = booking.amount
+        commission = amount * Decimal('0.05')
+        teacher_earns = amount - commission
+        
+        Payment.objects.create(
+            booking=booking,
+            student=self.request.user,
+            teacher=booking.teacher,
+            amount=amount,
+            commission=commission,
+            teacher_earns=teacher_earns,
+            payment_method='mock',
+            payment_status='holding_mock',
+            transaction_id=f"mock_tx_{uuid.uuid4().hex[:12]}",
+            completed_at=timezone.now()
+        )
 
 
 class TeacherViewSet(viewsets.ModelViewSet):
@@ -621,3 +650,173 @@ class TeacherViewSet(viewsets.ModelViewSet):
             'viewer_timezone': viewer_tz,
             'slots': slots,
         })
+
+
+class ChatViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        from .models.support import Thread
+        from .serializers import ThreadSerializer
+        # Get all threads where current user is student OR teacher
+        threads = Thread.objects.filter(Q(student=request.user) | Q(teacher=request.user)).order_by('-updated_at')
+        serializer = ThreadSerializer(threads, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        from .models.support import Thread, Message
+        from .serializers import ThreadSerializer
+        from django.shortcuts import get_object_or_404
+        # Get thread where current user is student OR teacher
+        thread = get_object_or_404(Thread, Q(id=pk) & (Q(student=request.user) | Q(teacher=request.user)))
+        
+        # Mark all messages in this thread received by current user as read
+        unread_msgs = Message.objects.filter(thread=thread, recipient=request.user, is_read=False)
+        unread_msgs.update(is_read=True)
+        
+        serializer = ThreadSerializer(thread, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='start')
+    def start_thread(self, request):
+        from .models.users import Teacher
+        from .models.support import Thread
+        from .serializers import ThreadSerializer
+        from django.shortcuts import get_object_or_404
+        
+        teacher_id = request.data.get('teacher_id')
+        if not teacher_id:
+            return Response({'detail': 'teacher_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        teacher = get_object_or_404(Teacher, pk=teacher_id)
+        
+        if teacher.user == request.user:
+            return Response({'detail': 'You cannot start a conversation with yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        thread, created = Thread.objects.get_or_create(student=request.user, teacher=teacher.user)
+        if not created:
+            import django.utils.timezone as tz
+            thread.updated_at = tz.now()
+            thread.save()
+            
+        serializer = ThreadSerializer(thread, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='send_message')
+    def send_message(self, request, pk=None):
+        import re
+        from django.core.mail import send_mail
+        from .models.support import Thread, Message
+        from .serializers import MessageSerializer
+        from django.shortcuts import get_object_or_404
+        
+        thread = get_object_or_404(Thread, Q(id=pk) & (Q(student=request.user) | Q(teacher=request.user)))
+        content = request.data.get('content', '').strip()
+        
+        if not content:
+            return Response({'detail': 'Message content cannot be empty'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # 1. Contact Sharing Bypass Validation
+        # Email address
+        email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+        # Phone number: 7-15 digits allowing spaces, dashes, parentheses
+        phone_pattern = r'(?:\+?\d[\s\-\(\)]*){7,15}\d'
+        
+        off_platform_patterns = [
+            r'zoom\.us',
+            r'meet\.google\.com',
+            r'wa\.me',
+            r'whatsapp\.com',
+            r't\.me',
+            r'telegram\.org',
+            r'telegram\.me',
+            r'facebook\.com',
+            r'fb\.me',
+            r'fb\.com',
+            r'instagram\.com',
+            r'linkedin\.com',
+            r'twitter\.com',
+            r'x\.com',
+            r'https?://[^\s]+',
+            r'www\.[^\s]+'
+        ]
+        
+        if re.search(email_pattern, content):
+            return Response(
+                {'detail': 'Sharing email addresses is not allowed in chat to prevent off-platform bypass and ensure user safety.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        for match in re.finditer(phone_pattern, content):
+            match_str = match.group()
+            cleaned = re.sub(r'[\s\-\(\)\+]', '', match_str)
+            if len(cleaned) >= 7 and cleaned.isdigit():
+                if len(cleaned) == 8 and (cleaned.startswith('202') or cleaned.startswith('199') or cleaned.startswith('200') or cleaned.startswith('201')):
+                    continue
+                return Response(
+                    {'detail': 'Sharing phone numbers is not allowed in chat to prevent off-platform bypass and ensure user safety.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        for pattern in off_platform_patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                return Response(
+                    {'detail': 'Sharing external meeting, WhatsApp, or social links is not allowed in chat. Confirmed bookings automatically generate a secure Google Meet link.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # 2. Save message
+        recipient = thread.teacher if request.user == thread.student else thread.student
+        message = Message.objects.create(
+            thread=thread,
+            sender=request.user,
+            recipient=recipient,
+            content=content,
+            is_read=False
+        )
+        
+        # Touch the thread to update its updated_at timestamp
+        import django.utils.timezone as tz
+        thread.updated_at = tz.now()
+        thread.save()
+        
+        # 3. Email Notification to recipient
+        try:
+            sender_name = request.user.get_full_name() or request.user.username
+            recipient_email = recipient.email
+            if recipient_email:
+                html_message = f"""
+                <html>
+                    <body>
+                        <h2>New Message Received on Muallim</h2>
+                        <p>Dear {recipient.get_full_name() or recipient.username},</p>
+                        <p>You have received a new message from <strong>{sender_name}</strong>:</p>
+                        <blockquote style="padding: 10px; background-color: #F8F6F1; border-left: 4px solid #C8962A; margin: 10px 0;">
+                            {content}
+                        </blockquote>
+                        <p><a href="http://localhost:3000/messages" style="padding: 10px 20px; background-color: #C8962A; color: white; text-decoration: none; border-radius: 5px;">Reply to Message</a></p>
+                        <p>Best regards,<br>Muallim Team</p>
+                    </body>
+                </html>
+                """
+                send_mail(
+                    subject=f'New message from {sender_name} on Muallim',
+                    message=f'You have received a new message from {sender_name}: "{content[:100]}..."',
+                    from_email=None,
+                    recipient_list=[recipient_email],
+                    html_message=html_message,
+                    fail_silently=True,
+                )
+        except Exception as e:
+            print(f"Error sending message email notification: {str(e)}")
+            
+        serializer = MessageSerializer(message, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='mark_read')
+    def mark_read(self, request, pk=None):
+        from .models.support import Thread, Message
+        from django.shortcuts import get_object_or_404
+        thread = get_object_or_404(Thread, Q(id=pk) & (Q(student=request.user) | Q(teacher=request.user)))
+        Message.objects.filter(thread=thread, recipient=request.user, is_read=False).update(is_read=True)
+        return Response({'status': 'read'})

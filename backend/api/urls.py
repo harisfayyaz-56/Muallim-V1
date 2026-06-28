@@ -11,6 +11,7 @@ router = DefaultRouter()
 router.register(r'profile', views.UserProfileViewSet, basename='profile')
 router.register(r'bookings', views.BookingViewSet, basename='booking')
 router.register(r'teacher', views.TeacherViewSet, basename='teacher')
+router.register(r'chat/threads', views.ChatViewSet, basename='chat-threads')
 
 urlpatterns = [
     path('health/', views.health_check),

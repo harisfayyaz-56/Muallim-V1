@@ -58,8 +58,10 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL')
 IS_DOCKER = os.path.exists('/.dockerenv') or os.environ.get('IS_DOCKER') == 'True'
+import sys
+RUNNING_TESTS = 'test' in sys.argv
 
-if DATABASE_URL and (IS_DOCKER or '@db:' not in DATABASE_URL):
+if DATABASE_URL and (IS_DOCKER or '@db:' not in DATABASE_URL) and not RUNNING_TESTS:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
@@ -73,7 +75,7 @@ if DATABASE_URL and (IS_DOCKER or '@db:' not in DATABASE_URL):
             'connect_timeout': 10,
         }
 else:
-    # Fallback to SQLite for local development
+    # Fallback to SQLite for local development or testing
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
