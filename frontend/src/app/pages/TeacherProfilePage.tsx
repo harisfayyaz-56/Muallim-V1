@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, Link, useNavigate } from 'react-router';
 import { Star, MapPin, Clock, MessageSquare, CheckCircle, Globe, Calendar, ChevronLeft, Share2, Heart, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -9,6 +9,7 @@ import { getTeacherAvailability, getTeacherSlotsForDate } from '../../api/availa
 import { mapProfileToTeacher } from '../utils/mappers';
 import { DAYS_FULL, DAY_LABELS } from '../utils/availability';
 import { getTimezoneAbbr, DEFAULT_TIMEZONE } from '../../utils/preferences';
+import { startThread } from '../../api/chat';
 
 const DAYS = DAYS_FULL;
 
@@ -29,6 +30,33 @@ export function TeacherProfilePage() {
   const [profileSlots, setProfileSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [daySlotCounts, setDaySlotCounts] = useState<Record<string, number>>({});
+  const navigate = useNavigate();
+  const [messagingLoading, setMessagingLoading] = useState(false);
+  const [messagingError, setMessagingError] = useState<string | null>(null);
+  const [subject, setSubject] = useState('');
+  const [learningNote, setLearningNote] = useState('');
+
+  const handleMessageFirst = async () => {
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    
+    if (!teacher || !teacher.id) return;
+    
+    setMessagingLoading(true);
+    setMessagingError(null);
+    try {
+      const thread = await startThread(token, String(teacher.id));
+      navigate(`/messages?threadId=${thread.id}`);
+    } catch (err: any) {
+      console.error('Failed to start chat thread:', err);
+      setMessagingError(err.message || 'Could not start conversation.');
+    } finally {
+      setMessagingLoading(false);
+    }
+  };
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -125,7 +153,7 @@ export function TeacherProfilePage() {
         setTeacher(mapped);
         
         setSessionDurations([30, 60]);
-        setDuration(60);
+        setDuration(mapped.session_duration === '30' ? 30 : 60);
       } catch (err) {
         console.error('Error fetching teacher profile:', err);
         setError('Failed to load teacher profile');
@@ -191,13 +219,22 @@ export function TeacherProfilePage() {
 
   const getSlotsForDay = (day: string) => {
     const rawSlots = slotsByDay[day] || [];
-    return rawSlots.filter((slot: any) => {
-      if (typeof slot === 'string') return true;
+    let totalSlotsCount = 0;
+    rawSlots.forEach((slot: any) => {
+      if (typeof slot === 'string') {
+        totalSlotsCount += 1;
+        return;
+      }
       const [sh, sm] = slot.start.split(':').map(Number);
       const [eh, em] = slot.end.split(':').map(Number);
-      const diff = (eh * 60 + em) - (sh * 60 + sm);
-      return diff === duration;
+      let diff = (eh * 60 + em) - (sh * 60 + sm);
+      if (diff < 0) diff += 24 * 60;
+      if (diff >= duration) {
+        // Count each availability block as 1 bookable slot
+        totalSlotsCount += 1;
+      }
     });
+    return totalSlotsCount;
   };
 
   const getDisplaySlots = () => {
@@ -209,7 +246,7 @@ export function TeacherProfilePage() {
       const [sh, sm] = slot.start.split(':').map(Number);
       const [eh, em] = slot.end.split(':').map(Number);
       const diff = (eh * 60 + em) - (sh * 60 + sm);
-      return diff === duration;
+      return diff >= duration;
     }).map((slot: any) => typeof slot === 'string' ? slot : slot.start);
   };
 
@@ -442,7 +479,7 @@ export function TeacherProfilePage() {
                 {/* Day Selector */}
                 <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
                   {DAYS.map(day => {
-                    const count = daySlotCounts[day] !== undefined ? daySlotCounts[day] : getSlotsForDay(day).length;
+                    const count = daySlotCounts[day] !== undefined ? daySlotCounts[day] : getSlotsForDay(day);
                     return (
                       <button
                         key={day}
@@ -530,22 +567,55 @@ export function TeacherProfilePage() {
                 <div className="bg-[#F8F6F1] rounded-xl p-4 space-y-2.5">
                   <div className="flex justify-between text-sm">
                     <span className="text-[#6B7280]">Session ({duration} min)</span>
-                    <span className="text-[#0D1B2A]">AED {sessionPrice}</span>
+                    <span className="text-[#0D1B2A]">AED {sessionPrice.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#6B7280]">Platform fee ({PLATFORM_FEE_PERCENT}%)</span>
-                    <span className="text-[#0D1B2A]">AED {platformFee}</span>
+                    <span className="text-[#0D1B2A]">AED {platformFee.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6B7280]">VAT</span>
+                    <span className="text-[#9CA3AF] italic text-xs">calculated at checkout</span>
                   </div>
                   <div className="border-t border-[rgba(13,27,42,0.08)] pt-2.5 flex justify-between">
-                    <span className="text-[#0D1B2A]" style={{ fontWeight: 600 }}>Total</span>
-                    <span className="text-[#0D1B2A]" style={{ fontWeight: 700 }}>AED {total}</span>
+                    <span className="text-[#0D1B2A]" style={{ fontWeight: 600 }}>Estimated Total</span>
+                    <span className="text-[#0D1B2A]" style={{ fontWeight: 700 }}>AED {total.toFixed(2)}</span>
                   </div>
                 </div>
 
+                {selectedSlot && (
+                  <div className="space-y-3 border-t border-[rgba(13,27,42,0.08)] pt-4">
+                    <div>
+                      <label className="block text-xs text-[#9CA3AF] mb-1.5" style={{ fontWeight: 600 }}>Subject / Focus Area *</label>
+                      <input
+                        value={subject}
+                        onChange={e => setSubject(e.target.value)}
+                        placeholder={`e.g. ${teacher.skills[0] || 'General Study'}`}
+                        className="w-full px-3 py-2 rounded-xl border border-[rgba(13,27,42,0.15)] text-sm text-[#0D1B2A] focus:outline-none focus:border-[#C8962A] transition-colors"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9CA3AF] mb-1.5" style={{ fontWeight: 600 }}>Learning Note *</label>
+                      <textarea
+                        value={learningNote}
+                        onChange={e => setLearningNote(e.target.value)}
+                        placeholder="What do you want to learn? (Required)"
+                        className="w-full px-3 py-2 rounded-xl border border-[rgba(13,27,42,0.15)] text-sm text-[#0D1B2A] focus:outline-none focus:border-[#C8962A] transition-colors min-h-[80px]"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {selectedSlot ? (
                   <Link
-                    to={`/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}&duration=${duration}`}
-                    className="block w-full text-center bg-[#C8962A] hover:bg-[#b8851f] text-white px-4 py-3.5 rounded-xl transition-colors duration-150"
+                    to={`/book/${teacher.id}?day=${selectedDay}&time=${selectedSlot}&duration=${duration}&subject=${encodeURIComponent(subject)}&notes=${encodeURIComponent(learningNote)}`}
+                    className={`block w-full text-center px-4 py-3.5 rounded-xl transition-colors duration-150 ${
+                      subject.trim() && learningNote.trim()
+                        ? 'bg-[#C8962A] hover:bg-[#b8851f] text-white shadow-md'
+                        : 'bg-[#F0ECE4] text-[#C9B99A] cursor-not-allowed pointer-events-none'
+                    }`}
                     style={{ fontWeight: 600 }}
                   >
                     Book Selected Slot ({selectedSlot})
@@ -564,13 +634,23 @@ export function TeacherProfilePage() {
                   </button>
                 )}
 
-                <Link
-                  to="/messages"
-                  className="flex items-center justify-center gap-2 w-full border border-[rgba(13,27,42,0.15)] text-[#0D1B2A] hover:bg-[#F8F6F1] px-4 py-3 rounded-xl transition-colors text-sm"
+                <button
+                  type="button"
+                  onClick={handleMessageFirst}
+                  disabled={messagingLoading}
+                  className="flex items-center justify-center gap-2 w-full border border-[rgba(13,27,42,0.15)] text-[#0D1B2A] hover:bg-[#F8F6F1] px-4 py-3 rounded-xl transition-colors text-sm disabled:opacity-50"
                   style={{ fontWeight: 500 }}
                 >
-                  <MessageSquare className="w-4 h-4" /> Message First
-                </Link>
+                  {messagingLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <MessageSquare className="w-4 h-4" />
+                  )}
+                  Message First
+                </button>
+                {messagingError && (
+                  <p className="text-center text-xs text-red-500 mt-1">{messagingError}</p>
+                )}
 
                 <p className="text-center text-xs text-[#9CA3AF]">
                   Free cancellation up to 24 hours before the session

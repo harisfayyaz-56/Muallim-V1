@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router';
-import { Calendar, Clock, ChevronLeft, ChevronRight, CreditCard, Shield, CheckCircle, Loader2 } from 'lucide-react';
+import { Calendar, Clock, ChevronLeft, ChevronRight, CreditCard, Shield, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { PLATFORM_FEE_PERCENT } from '../data/mockData';
@@ -70,7 +70,13 @@ export function BookingPage() {
           utc: localDt.toISOString(),
           available: true
         };
-        initialStep = 'confirm';
+        const preSubjectInit = urlParamsInit.get('subject') || '';
+        const preNotesInit = urlParamsInit.get('notes') || '';
+        if (preSubjectInit.trim() && preNotesInit.trim()) {
+          initialStep = 'confirm';
+        } else {
+          initialStep = 'select';
+        }
         initialDay = targetDate.getDate();
         initialYear = targetDate.getFullYear();
         initialMonth = targetDate.getMonth();
@@ -86,7 +92,8 @@ export function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState<BookableSlot | null>(initialSlot);
   const [duration, setDuration] = useState(initialDuration);
   const [step, setStep] = useState<'select' | 'confirm' | 'success'>(initialStep);
-  const [subject, setSubject] = useState('');
+  const [subject, setSubject] = useState(urlParamsInit.get('subject') || '');
+  const [learningNote, setLearningNote] = useState(urlParamsInit.get('notes') || '');
   const [weeklySlots, setWeeklySlots] = useState<Record<string, string[]>>({});
   const [dateSlots30, setDateSlots30] = useState<BookableSlot[]>([]);
   const [dateSlots60, setDateSlots60] = useState<BookableSlot[]>([]);
@@ -97,6 +104,7 @@ export function BookingPage() {
   const [bookingError, setBookingError] = useState('');
   const [paying, setPaying] = useState(false);
   const [sessionDurations, setSessionDurations] = useState<('30' | '60')[]>(['30', '60']);
+  const [createdBooking, setCreatedBooking] = useState<any | null>(null);
 
   useEffect(() => {
     if (!teacherId) return;
@@ -104,8 +112,10 @@ export function BookingPage() {
       try {
         const token = localStorage.getItem('muallim_access_token') || undefined;
         const data = await getTeacher(teacherId, token);
-        setTeacher(mapProfileToTeacher(data));
+        const mapped = mapProfileToTeacher(data);
+        setTeacher(mapped);
         setSessionDurations(['30', '60']);
+        setDuration(mapped.session_duration === '30' ? 30 : 60);
       } catch (err) {
         console.error('Error fetching teacher profile for booking:', err);
         setError('Failed to load teacher details');
@@ -137,10 +147,9 @@ export function BookingPage() {
     })();
   }, [teacherId]);
 
+  // Handled on BookingPage itself
   useEffect(() => {
-    if (step === 'select' && teacherId) {
-      navigate(`/teacher/${teacherId}?tab=availability`);
-    }
+    // No redirect back to profile page so user can fill subject/notes
   }, [step, teacherId, navigate]);
 
   useEffect(() => {
@@ -168,12 +177,16 @@ export function BookingPage() {
         const params = new URLSearchParams(window.location.search);
         const preTime = params.get('time');
         const preDur = params.get('duration');
+        const preSubject = params.get('subject') || '';
+        const preNotes = params.get('notes') || '';
         if (preTime && Number(preDur) === 30) {
           const matchingSlot = slots.find(s => s.time === preTime);
           if (matchingSlot) {
             setDuration(30);
             setSelectedSlot(matchingSlot);
-            setStep('confirm');
+            if (preSubject.trim() && preNotes.trim()) {
+              setStep('confirm');
+            }
           }
         }
       } catch {
@@ -193,12 +206,16 @@ export function BookingPage() {
         const params = new URLSearchParams(window.location.search);
         const preTime = params.get('time');
         const preDur = params.get('duration');
+        const preSubject = params.get('subject') || '';
+        const preNotes = params.get('notes') || '';
         if (preTime && (Number(preDur) === 60 || !preDur)) {
           const matchingSlot = slots.find(s => s.time === preTime);
           if (matchingSlot) {
             setDuration(60);
             setSelectedSlot(matchingSlot);
-            setStep('confirm');
+            if (preSubject.trim() && preNotes.trim()) {
+              setStep('confirm');
+            }
           }
         }
       } catch {
@@ -222,24 +239,33 @@ export function BookingPage() {
       if (typeof slot === 'string') return true;
       const [sh, sm] = slot.start.split(':').map(Number);
       const [eh, em] = slot.end.split(':').map(Number);
-      const diff = (eh * 60 + em) - (sh * 60 + sm);
-      return diff === duration;
+      let diff = (eh * 60 + em) - (sh * 60 + sm);
+      if (diff < 0) diff += 24 * 60;
+      // A slot is relevant if it's large enough for at least one allowed session duration
+      return sessionDurations.some(d => diff >= Number(d));
     });
   };
 
   const handlePayment = async () => {
     const token = localStorage.getItem('muallim_access_token');
     if (!token || !teacher || !selectedSlot) return;
+    if (!subject.trim() || !learningNote.trim()) {
+      setBookingError('Subject and Learning Note are required.');
+      return;
+    }
     setPaying(true);
     setBookingError('');
     try {
-      await createBooking(token, {
+      const booking = await createBooking(token, {
         teacher_id: Number(teacher.id),
-        subject: subject || teacher.skills[0] || 'Session',
+        subject: subject,
         scheduled_date: selectedSlot.utc,
         duration_minutes: duration,
-        amount: String(total),
+        amount: total.toFixed(2),
+        notes: learningNote,
+        description: learningNote,
       });
+      setCreatedBooking(booking);
       setStep('success');
     } catch (err: any) {
       setBookingError(err.message || 'Booking failed. The slot may have been taken.');
@@ -313,15 +339,38 @@ export function BookingPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-[#9CA3AF]">Subject</span>
-                <span className="text-[#0D1B2A]">{subject || teacher.skills[0]}</span>
+                <span className="text-[#0D1B2A]">{subject}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Learning Note</span>
+                <span className="text-[#0D1B2A] max-w-xs truncate">{learningNote}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#9CA3AF]">Duration</span>
                 <span className="text-[#0D1B2A]">{duration} minutes</span>
               </div>
+              {createdBooking?.payment_status && (
+                <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
+                  <span className="text-[#9CA3AF]">Payment Status</span>
+                  <span className="text-amber-800 font-semibold uppercase text-xs">{createdBooking.payment_status.replace('_', ' ')}</span>
+                </div>
+              )}
+              {createdBooking?.meeting_link && (
+                <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
+                  <span className="text-[#9CA3AF]">Meeting Link</span>
+                  <a
+                    href={createdBooking.meeting_link}
+                    className="text-[#C8962A] hover:underline flex items-center gap-1 text-xs"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Join Session <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
               <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
                 <span className="text-[#9CA3AF]">Total Paid</span>
-                <span className="text-[#C8962A]" style={{ fontWeight: 700 }}>AED {total}</span>
+                <span className="text-[#C8962A]" style={{ fontWeight: 700 }}>AED {total.toFixed(2)}</span>
               </div>
             </div>
             <div className="flex flex-col gap-3">
@@ -439,66 +488,70 @@ export function BookingPage() {
                     </h3>
                     
                     {/* 30 Minutes Slots */}
-                    <div>
-                      <h4 className="text-xs font-bold text-[#0D1B2A]/70 uppercase tracking-wider mb-3">30 Minutes Sessions</h4>
-                      {slotsLoading30 ? (
-                        <div className="flex items-center justify-center py-4 text-[#C8962A]">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                      ) : dateSlots30.length === 0 ? (
-                        <p className="text-xs text-[#9CA3AF] italic">No 30-minute sessions available</p>
-                      ) : (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                          {dateSlots30.map(slot => (
-                            <button
-                              key={`30-${slot.utc}`}
-                              onClick={() => {
-                                setDuration(30);
-                                setSelectedSlot(selectedSlot?.utc === slot.utc && duration === 30 ? null : slot);
-                              }}
-                              className={`py-2 rounded-xl text-xs border transition-all ${
-                                selectedSlot?.utc === slot.utc && duration === 30
-                                  ? 'bg-[#C8962A] border-[#C8962A] text-white font-semibold'
-                                  : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
-                              }`}
-                            >
-                              {slot.time}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    {sessionDurations.includes('30') && (
+                      <div>
+                        <h4 className="text-xs font-bold text-[#0D1B2A]/70 uppercase tracking-wider mb-3">30 Minutes Sessions</h4>
+                        {slotsLoading30 ? (
+                          <div className="flex items-center justify-center py-4 text-[#C8962A]">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          </div>
+                        ) : dateSlots30.length === 0 ? (
+                          <p className="text-xs text-[#9CA3AF] italic">No 30-minute sessions available</p>
+                        ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                            {dateSlots30.map(slot => (
+                              <button
+                                key={`30-${slot.utc}`}
+                                onClick={() => {
+                                  setDuration(30);
+                                  setSelectedSlot(selectedSlot?.utc === slot.utc && duration === 30 ? null : slot);
+                                }}
+                                className={`py-2 rounded-xl text-xs border transition-all ${
+                                  selectedSlot?.utc === slot.utc && duration === 30
+                                    ? 'bg-[#C8962A] border-[#C8962A] text-white font-semibold'
+                                    : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
+                                }`}
+                              >
+                                {slot.time}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* 60 Minutes Slots */}
-                    <div className="border-t border-[rgba(13,27,42,0.06)] pt-5">
-                      <h4 className="text-xs font-bold text-[#0D1B2A]/70 uppercase tracking-wider mb-3">60 Minutes Sessions</h4>
-                      {slotsLoading60 ? (
-                        <div className="flex items-center justify-center py-4 text-[#C8962A]">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                      ) : dateSlots60.length === 0 ? (
-                        <p className="text-xs text-[#9CA3AF] italic">No 60-minute sessions available</p>
-                      ) : (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                          {dateSlots60.map(slot => (
-                            <button
-                              key={`60-${slot.utc}`}
-                              onClick={() => {
-                                setDuration(60);
-                                setSelectedSlot(selectedSlot?.utc === slot.utc && duration === 60 ? null : slot);
-                              }}
-                              className={`py-2 rounded-xl text-xs border transition-all ${
-                                selectedSlot?.utc === slot.utc && duration === 60
-                                  ? 'bg-[#C8962A] border-[#C8962A] text-white font-semibold'
-                                  : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
-                              }`}
-                            >
-                              {slot.time}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    {sessionDurations.includes('60') && (
+                      <div className={sessionDurations.includes('30') ? "border-t border-[rgba(13,27,42,0.06)] pt-5" : ""}>
+                        <h4 className="text-xs font-bold text-[#0D1B2A]/70 uppercase tracking-wider mb-3">60 Minutes Sessions</h4>
+                        {slotsLoading60 ? (
+                          <div className="flex items-center justify-center py-4 text-[#C8962A]">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          </div>
+                        ) : dateSlots60.length === 0 ? (
+                          <p className="text-xs text-[#9CA3AF] italic">No 60-minute sessions available</p>
+                        ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                            {dateSlots60.map(slot => (
+                              <button
+                                key={`60-${slot.utc}`}
+                                onClick={() => {
+                                  setDuration(60);
+                                  setSelectedSlot(selectedSlot?.utc === slot.utc && duration === 60 ? null : slot);
+                                }}
+                                className={`py-2 rounded-xl text-xs border transition-all ${
+                                  selectedSlot?.utc === slot.utc && duration === 60
+                                    ? 'bg-[#C8962A] border-[#C8962A] text-white font-semibold'
+                                    : 'bg-[#F8F6F1] border-transparent text-[#0D1B2A] hover:border-[#C8962A]/30'
+                                }`}
+                              >
+                                {slot.time}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -527,36 +580,52 @@ export function BookingPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs text-[#9CA3AF] mb-1.5">Subject / Focus Area</label>
+                      <label className="block text-xs text-[#9CA3AF] mb-1.5" style={{ fontWeight: 600 }}>Subject / Focus Area *</label>
                       <input
                         value={subject}
                         onChange={e => setSubject(e.target.value)}
-                        placeholder={`e.g. ${teacher.skills[0]}`}
+                        placeholder={`e.g. ${teacher.skills[0] || 'General Quran Study'}`}
                         className="w-full px-3 py-2 rounded-xl border border-[rgba(13,27,42,0.15)] text-sm text-[#0D1B2A] focus:outline-none focus:border-[#C8962A] transition-colors"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-[#9CA3AF] mb-1.5" style={{ fontWeight: 600 }}>Learning Note *</label>
+                      <textarea
+                        value={learningNote}
+                        onChange={e => setLearningNote(e.target.value)}
+                        placeholder="Explain briefly what you want to learn in this session... (Required)"
+                        className="w-full px-3 py-2 rounded-xl border border-[rgba(13,27,42,0.15)] text-sm text-[#0D1B2A] focus:outline-none focus:border-[#C8962A] transition-colors min-h-[80px]"
+                        required
                       />
                     </div>
 
                     <div className="bg-[#F8F6F1] rounded-xl p-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-[#6B7280]">Session ({duration} min)</span>
-                        <span className="text-[#0D1B2A]">AED {sessionPrice}</span>
+                        <span className="text-[#0D1B2A]">AED {sessionPrice.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-[#6B7280]">Platform fee</span>
-                        <span className="text-[#0D1B2A]">AED {platformFee}</span>
+                        <span className="text-[#6B7280]">Platform fee ({PLATFORM_FEE_PERCENT}%)</span>
+                        <span className="text-[#0D1B2A]">AED {platformFee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#6B7280]">VAT</span>
+                        <span className="text-[#9CA3AF] italic text-xs">calculated at checkout</span>
                       </div>
                       <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
                         <span style={{ fontWeight: 600 }} className="text-[#0D1B2A]">Total</span>
-                        <span style={{ fontWeight: 700 }} className="text-[#0D1B2A]">AED {total}</span>
+                        <span style={{ fontWeight: 700 }} className="text-[#0D1B2A]">AED {total.toFixed(2)}</span>
                       </div>
                     </div>
 
                     <button
-                      onClick={() => selectedDay && selectedSlot && setStep('confirm')}
-                      disabled={!selectedDay || !selectedSlot}
+                      onClick={() => selectedDay && selectedSlot && subject.trim() && learningNote.trim() && setStep('confirm')}
+                      disabled={!selectedDay || !selectedSlot || !subject.trim() || !learningNote.trim()}
                       className={`w-full py-3 rounded-xl text-sm transition-colors ${
-                        selectedDay && selectedSlot
-                          ? 'bg-[#C8962A] hover:bg-[#b8851f] text-white'
+                        selectedDay && selectedSlot && subject.trim() && learningNote.trim()
+                          ? 'bg-[#C8962A] hover:bg-[#b8851f] text-white shadow-md'
                           : 'bg-[#F0ECE4] text-[#C9B99A] cursor-not-allowed'
                       }`}
                       style={{ fontWeight: 600 }}
@@ -586,11 +655,12 @@ export function BookingPage() {
                       { label: 'Date', value: selectedDate?.toLocaleDateString('en-AE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) || '' },
                       { label: 'Time', value: `${selectedSlot?.time} (${getTimezoneAbbr(viewerTimezone)})` },
                       { label: 'Duration', value: `${duration} minutes` },
-                      { label: 'Subject', value: subject || teacher.skills[0] },
+                      { label: 'Subject', value: subject },
+                      { label: 'Learning Note', value: learningNote },
                     ].map(row => (
-                      <div key={row.label} className="flex justify-between">
-                        <span className="text-[#9CA3AF]">{row.label}</span>
-                        <span className="text-[#0D1B2A]" style={{ fontWeight: 500 }}>{row.value}</span>
+                      <div key={row.label} className="flex justify-between gap-4">
+                        <span className="text-[#9CA3AF] shrink-0">{row.label}</span>
+                        <span className="text-[#0D1B2A] text-right truncate max-w-[200px]" style={{ fontWeight: 500 }} title={row.value}>{row.value}</span>
                       </div>
                     ))}
                   </div>
@@ -613,15 +683,19 @@ export function BookingPage() {
                   <div className="bg-[#F8F6F1] rounded-xl p-4 text-sm space-y-2">
                     <div className="flex justify-between">
                       <span className="text-[#6B7280]">Session ({duration} min)</span>
-                      <span className="text-[#0D1B2A]">AED {sessionPrice}</span>
+                      <span className="text-[#0D1B2A]">AED {sessionPrice.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Platform fee (12%)</span>
-                      <span className="text-[#0D1B2A]">AED {platformFee}</span>
+                      <span className="text-[#6B7280]">Platform fee ({PLATFORM_FEE_PERCENT}%)</span>
+                      <span className="text-[#0D1B2A]">AED {platformFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6B7280]">VAT</span>
+                      <span className="text-[#9CA3AF] italic text-xs">calculated at checkout</span>
                     </div>
                     <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
                       <span style={{ fontWeight: 700 }} className="text-[#0D1B2A]">Total Charged</span>
-                      <span style={{ fontWeight: 700, fontSize: '1rem', fontFamily: 'Fraunces, serif' }} className="text-[#C8962A]">AED {total}</span>
+                      <span style={{ fontWeight: 700, fontSize: '1rem', fontFamily: 'Fraunces, serif' }} className="text-[#C8962A]">AED {total.toFixed(2)}</span>
                     </div>
                   </div>
 
@@ -632,7 +706,17 @@ export function BookingPage() {
                   )}
 
                   <div className="flex gap-3">
-                    <button onClick={() => navigate(`/teacher/${teacherId}?tab=availability`)} className="flex-1 py-3 border border-[rgba(13,27,42,0.15)] text-[#6B7280] rounded-xl text-sm hover:bg-[#F8F6F1] transition-colors">
+                    <button
+                      onClick={() => {
+                        const params = new URLSearchParams(window.location.search);
+                        if (params.get('subject') && params.get('notes')) {
+                          navigate(`/teacher/${teacherId}?tab=availability`);
+                        } else {
+                          setStep('select');
+                        }
+                      }}
+                      className="flex-1 py-3 border border-[rgba(13,27,42,0.15)] text-[#6B7280] rounded-xl text-sm hover:bg-[#F8F6F1] transition-colors"
+                    >
                       Back
                     </button>
                     <button
