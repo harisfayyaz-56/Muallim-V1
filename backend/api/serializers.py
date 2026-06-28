@@ -13,17 +13,22 @@ class BookingSerializer(rf_serializers.ModelSerializer):
     teacher_avatar = rf_serializers.SerializerMethodField()
     student_name = rf_serializers.SerializerMethodField()
     student_avatar = rf_serializers.SerializerMethodField()
+    payment_status = rf_serializers.SerializerMethodField()
+    payment_method = rf_serializers.SerializerMethodField()
+    payment_transaction_id = rf_serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
         fields = [
             'id', 'student', 'teacher_id', 'teacher_id_read', 'teacher_name', 'teacher_avatar',
             'student_name', 'student_avatar', 'subject', 'description', 'scheduled_date',
-            'duration_minutes', 'status', 'amount', 'meeting_link', 'notes', 'created_at', 'updated_at'
+            'duration_minutes', 'status', 'amount', 'meeting_link', 'notes', 'created_at', 'updated_at',
+            'payment_status', 'payment_method', 'payment_transaction_id'
         ]
         read_only_fields = [
             'id', 'student', 'status', 'teacher_id_read', 'teacher_name', 'teacher_avatar',
-            'student_name', 'student_avatar', 'meeting_link', 'created_at', 'updated_at'
+            'student_name', 'student_avatar', 'meeting_link', 'created_at', 'updated_at',
+            'payment_status', 'payment_method', 'payment_transaction_id'
         ]
 
     def get_teacher_id_read(self, obj):
@@ -49,6 +54,15 @@ class BookingSerializer(rf_serializers.ModelSerializer):
             return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
         return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
 
+    def get_payment_status(self, obj):
+        return obj.payment.payment_status if hasattr(obj, 'payment') else 'pending'
+
+    def get_payment_method(self, obj):
+        return obj.payment.payment_method if hasattr(obj, 'payment') else None
+
+    def get_payment_transaction_id(self, obj):
+        return obj.payment.transaction_id if hasattr(obj, 'payment') else None
+
     def validate_teacher_id(self, value):
         from .models.users import Teacher
         try:
@@ -72,6 +86,17 @@ class BookingSerializer(rf_serializers.ModelSerializer):
         scheduled_date = attrs.get('scheduled_date')
         duration_minutes = attrs.get('duration_minutes', 60)
 
+        # Enforce learning note requirement
+        notes = attrs.get('notes')
+        description = attrs.get('description')
+        if not notes or not notes.strip():
+            if description and description.strip():
+                attrs['notes'] = description
+            else:
+                raise rf_serializers.ValidationError({'notes': 'A learning note explaining what you want to learn is required.'})
+        elif not description or not description.strip():
+            attrs['description'] = notes
+
         if teacher_id and scheduled_date:
             try:
                 teacher = Teacher.objects.get(pk=teacher_id)
@@ -90,7 +115,7 @@ class BookingSerializer(rf_serializers.ModelSerializer):
 
 class TeacherAvailabilityUpdateSerializer(rf_serializers.Serializer):
     grid = rf_serializers.DictField(required=False)
-    session_duration = rf_serializers.ChoiceField(choices=['30', '60', 'both'], required=False)
+    session_duration = rf_serializers.ChoiceField(choices=['30', '60'], required=False)
 
 
 
@@ -212,3 +237,93 @@ class AvatarUploadSerializer(serializers.ModelSerializer):
                 instance.profile_picture.url
             ) if request else instance.profile_picture.url
         return representation
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    senderId = serializers.IntegerField(source='sender.id')
+    senderName = serializers.SerializerMethodField()
+    senderAvatar = serializers.SerializerMethodField()
+    timestamp = serializers.DateTimeField(source='created_at')
+    isRead = serializers.BooleanField(source='is_read')
+
+    class Meta:
+        from .models.support import Message
+        model = Message
+        fields = ['id', 'senderId', 'senderName', 'senderAvatar', 'content', 'timestamp', 'isRead']
+
+    def get_senderName(self, obj):
+        return obj.sender.get_full_name() or obj.sender.username
+
+    def get_senderAvatar(self, obj):
+        profile = getattr(obj.sender, 'profile', None)
+        request = self.context.get('request')
+        if profile and profile.profile_picture:
+            return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
+        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+
+
+class ThreadSerializer(serializers.ModelSerializer):
+    participantId = serializers.SerializerMethodField()
+    participantName = serializers.SerializerMethodField()
+    participantAvatar = serializers.SerializerMethodField()
+    participantRole = serializers.SerializerMethodField()
+    lastMessage = serializers.SerializerMethodField()
+    lastMessageTime = serializers.SerializerMethodField()
+    unreadCount = serializers.SerializerMethodField()
+    messages = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models.support import Thread
+        model = Thread
+        fields = [
+            'id', 'participantId', 'participantName', 'participantAvatar', 'participantRole',
+            'lastMessage', 'lastMessageTime', 'unreadCount', 'messages'
+        ]
+
+    def get_other_user(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return obj.student
+        return obj.teacher if request.user == obj.student else obj.student
+
+    def get_participantId(self, obj):
+        other = self.get_other_user(obj)
+        return other.id
+
+    def get_participantName(self, obj):
+        other = self.get_other_user(obj)
+        return other.get_full_name() or other.username
+
+    def get_participantAvatar(self, obj):
+        other = self.get_other_user(obj)
+        profile = getattr(other, 'profile', None)
+        request = self.context.get('request')
+        if profile and profile.profile_picture:
+            return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
+        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+
+    def get_participantRole(self, obj):
+        other = self.get_other_user(obj)
+        if other == obj.teacher:
+            return 'teacher'
+        return 'student'
+
+    def get_lastMessage(self, obj):
+        last_msg = obj.messages.order_by('-created_at').first()
+        return last_msg.content if last_msg else ""
+
+    def get_lastMessageTime(self, obj):
+        last_msg = obj.messages.order_by('-created_at').first()
+        time = last_msg.created_at if last_msg else obj.updated_at
+        return time.isoformat()
+
+    def get_unreadCount(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return 0
+        return obj.messages.filter(recipient=request.user, is_read=False).count()
+
+    def get_messages(self, obj):
+        msgs = obj.messages.order_by('created_at')
+        return MessageSerializer(msgs, many=True, context=self.context).data
+
