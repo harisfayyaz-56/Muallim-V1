@@ -203,7 +203,7 @@ export function MessagesPage() {
                         className={`w-full flex items-start gap-3 p-4 border-b border-[rgba(13,27,42,0.05)] transition-colors text-left ${selectedConvId === String(conv.id) ? 'bg-[#F8F6F1]' : 'hover:bg-[#F8F6F1]/50'}`}
                       >
                         <div className="relative shrink-0">
-                          <img src={conv.participantAvatar} alt={conv.participantName} className="w-10 h-10 rounded-xl object-cover" />
+                          <img src={conv.participantAvatar || defaultAvatar} alt={conv.participantName} className="w-10 h-10 rounded-xl object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
@@ -236,7 +236,7 @@ export function MessagesPage() {
                       <button onClick={() => setMobileView('list')} className="md:hidden p-1.5 hover:bg-[#F8F6F1] rounded-lg transition-colors">
                         <ArrowLeft className="w-4 h-4 text-[#6B7280]" />
                       </button>
-                      <img src={selectedConv.participantAvatar} alt={selectedConv.participantName} className="w-9 h-9 rounded-xl object-cover" />
+                      <img src={selectedConv.participantAvatar || defaultAvatar} alt={selectedConv.participantName} className="w-9 h-9 rounded-xl object-cover" />
                       <div>
                         <p className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>{selectedConv.participantName}</p>
                         <p className="text-[#9CA3AF] text-xs capitalize">{selectedConv.participantRole}</p>
