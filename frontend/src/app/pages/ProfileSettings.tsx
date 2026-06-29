@@ -6,6 +6,7 @@ import { Footer } from '../components/Footer';
 import { AvatarUploader } from '../components/AvatarUploader';
 import { AvatarDisplay } from '../components/AvatarDisplay';
 import { getProfile, changePassword, setPassword, updateProfile, deleteAccount } from '../../api/profile';
+import defaultAvatar from '@/assets/def_avatar.avif';
 
 const TIMEZONES = [
   'Asia/Dubai',
@@ -48,7 +49,7 @@ export function ProfileSettings() {
   });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [avatarPreview, setAvatarPreview] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=200&h=200&fit=crop&auto=format');
+  const [avatarPreview, setAvatarPreview] = useState(defaultAvatar);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);

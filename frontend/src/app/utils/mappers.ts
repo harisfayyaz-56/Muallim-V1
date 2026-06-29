@@ -1,10 +1,11 @@
 import type { TeacherProfile } from '../../api/profile';
+import defaultAvatar from '@/assets/def_avatar.avif';
 
 export function mapProfileToTeacher(profile: TeacherProfile): any {
   return {
     id: String(profile.id),
     name: profile.name || 'Teacher',
-    avatar: profile.avatar || "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format",
+    avatar: profile.avatar || defaultAvatar,
     status: profile.status,
     headline: profile.headline || profile.qualifications || '',
     bio: profile.bio || '',

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
 import { Menu, X, BookOpen, Bell, ChevronDown, LogOut, Settings, User, LayoutDashboard, GraduationCap } from 'lucide-react';
 import { getProfile } from '../../api/profile';
+import defaultAvatar from '@/assets/def_avatar.avif';
 
 const NAV_LINKS = [
   { label: 'Find Teachers', href: '/search' },
@@ -49,7 +50,7 @@ export function Navbar({ isLoggedIn = false, isTeacher = false }: { isLoggedIn?:
   const isActive = (href: string) => location.pathname === href;
 
   const displayName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username : 'User';
-  const avatarUrl = profile?.profile_picture || profile?.profile_picture_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format';
+  const avatarUrl = profile?.profile_picture || profile?.profile_picture_url || defaultAvatar;
 
   const isTeacherMode = location.pathname.startsWith('/teacher-dashboard') || location.pathname.startsWith('/settings/teacher');
   const hasTeacherProfile = isTeacher || profile?.user_type === 'both' || profile?.user_type === 'teacher' || profile?.has_teacher_profile;

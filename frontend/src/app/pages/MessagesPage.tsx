@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router';
 import { Send, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { getProfile } from '../../api/profile';
+import defaultAvatar from '@/assets/def_avatar.avif';
 import { getThreads, sendMessage as sendChatMessage, markThreadRead } from '../../api/chat';
 
 export function MessagesPage() {
@@ -256,8 +257,8 @@ export function MessagesPage() {
                         selectedConv.messages && selectedConv.messages.map((msg: any) => {
                           const isMe = String(msg.senderId) === 'me' || String(msg.senderId) !== String(selectedConv.participantId);
                           const avatar = isMe 
-                            ? (currentUserAvatar || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format') 
-                            : (selectedConv.participantAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80&h=80&fit=crop');
+                            ? (currentUserAvatar || defaultAvatar) 
+                            : (selectedConv.participantAvatar || defaultAvatar);
                           return (
                             <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
                               <img src={avatar} alt={msg.senderName} className="w-7 h-7 rounded-full object-cover shrink-0" />

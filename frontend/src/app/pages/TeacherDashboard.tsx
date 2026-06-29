@@ -5,6 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getProfile, getTeacherProfile } from '../../api/profile';
 import { getMyAvailability, getMyBookings } from '../../api/availability';
+import defaultAvatar from '@/assets/def_avatar.avif';
 import { DAYS_SHORT, TIME_SLOTS, EMPTY_GRID, countWeeklySlots } from '../utils/availability';
 import { getTimezoneAbbr, formatSlotTime, DEFAULT_TIMEZONE } from '../../utils/preferences';
 
@@ -14,7 +15,7 @@ export function TeacherDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'availability'>('overview');
   const [teacherName, setTeacherName] = useState('Teacher');
-  const [teacherAvatar, setTeacherAvatar] = useState('https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format');
+  const [teacherAvatar, setTeacherAvatar] = useState(defaultAvatar);
   const [profileStatus, setProfileStatus] = useState<'approved' | 'pending' | 'rejected'>('pending');
   const [availabilityGrid, setAvailabilityGrid] = useState<Record<string, string[]>>({ ...EMPTY_GRID });
   const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
@@ -81,9 +82,9 @@ export function TeacherDashboard() {
             id: String(b.id),
             teacherId: String(b.teacher_id_read || b.teacher_id),
             teacherName: b.teacher_name,
-            teacherAvatar: b.teacher_avatar,
+            teacherAvatar: b.teacher_avatar || defaultAvatar,
             studentName: b.student_name,
-            studentAvatar: b.student_avatar,
+            studentAvatar: b.student_avatar || defaultAvatar,
             subject: b.subject,
             date: new Date(b.scheduled_date).toLocaleDateString('en-AE', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }),
             time: formatSlotTime(b.scheduled_date, tz),
