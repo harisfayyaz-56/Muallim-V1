@@ -57,7 +57,7 @@ export function BookingPage() {
         const todayObj = new Date();
         const currentDayOfWeek = todayObj.getDay();
         let diff = targetDayOfWeek - currentDayOfWeek;
-        if (diff < 0) diff += 7;
+        if (diff <= 0) diff += 7;
         
         const targetDate = new Date();
         targetDate.setDate(todayObj.getDate() + diff);

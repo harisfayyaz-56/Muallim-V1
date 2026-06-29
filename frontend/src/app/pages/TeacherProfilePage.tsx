@@ -84,7 +84,7 @@ export function TeacherProfilePage() {
           if (targetDayOfWeek !== undefined) {
             const currentDayOfWeek = today.getDay();
             let diff = targetDayOfWeek - currentDayOfWeek;
-            if (diff < 0) diff += 7;
+            if (diff <= 0) diff += 7;
             
             const targetDate = new Date();
             targetDate.setDate(today.getDate() + diff);
@@ -122,7 +122,7 @@ export function TeacherProfilePage() {
         if (targetDayOfWeek !== undefined) {
           const currentDayOfWeek = today.getDay();
           let diff = targetDayOfWeek - currentDayOfWeek;
-          if (diff < 0) diff += 7;
+          if (diff <= 0) diff += 7;
           
           const targetDate = new Date();
           targetDate.setDate(today.getDate() + diff);

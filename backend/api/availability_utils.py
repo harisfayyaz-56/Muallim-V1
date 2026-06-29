@@ -230,7 +230,13 @@ def generate_slots_for_date(teacher, target_date, duration_minutes, viewer_timez
             av_end_dt += timedelta(days=1)
         
         av_dur = int((av_end_dt - av_start_dt).total_seconds() / 60)
-        if av_dur == duration_minutes:
+        is_dur_matching = False
+        if duration_minutes == 60:
+            is_dur_matching = (av_dur % 60 == 0)
+        elif duration_minutes == 30:
+            is_dur_matching = (av_dur % 30 == 0 and av_dur % 60 != 0)
+        
+        if is_dur_matching:
             windows.append((av_start_dt, av_end_dt))
 
     # Sort and merge overlapping or adjacent windows
@@ -327,7 +333,13 @@ def validate_booking_slot(teacher, scheduled_date, duration_minutes):
             av_end_dt += timedelta(days=1)
         
         av_dur = int((av_end_dt - av_start_dt).total_seconds() / 60)
-        if av_dur == duration_minutes:
+        is_dur_matching = False
+        if duration_minutes == 60:
+            is_dur_matching = (av_dur % 60 == 0)
+        elif duration_minutes == 30:
+            is_dur_matching = (av_dur % 30 == 0 and av_dur % 60 != 0)
+        
+        if is_dur_matching:
             windows.append((av_start_dt, av_end_dt))
 
     # Sort and merge overlapping or adjacent windows
