@@ -198,7 +198,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 'user_type': prof.user_type if prof else 'student',
                 'email_verified': prof.email_verified if prof else False,
                 'is_suspended': prof.is_suspended if prof else False,
-                'avatar': avatar_url or 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format',
+                'avatar': avatar_url,
                 'timezone': prof.timezone if prof else 'Asia/Dubai',
             })
         return Response(data)
@@ -457,7 +457,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
                 'hourlyRate': float(t.hourly_rate),
                 'submittedDate': t.created_at.isoformat(),
                 'status': t.status,
-                'avatar': avatar_url or "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format",
+                'avatar': avatar_url,
                 'rejectionReason': t.rejection_reason or ""
             })
         return Response(data)

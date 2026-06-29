@@ -42,7 +42,7 @@ class BookingSerializer(rf_serializers.ModelSerializer):
         request = self.context.get('request')
         if profile and profile.profile_picture:
             return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
-        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+        return None
 
     def get_student_name(self, obj):
         return obj.student.get_full_name() or obj.student.username
@@ -52,7 +52,7 @@ class BookingSerializer(rf_serializers.ModelSerializer):
         request = self.context.get('request')
         if profile and profile.profile_picture:
             return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
-        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+        return None
 
     def get_payment_status(self, obj):
         return obj.payment.payment_status if hasattr(obj, 'payment') else 'pending'
@@ -200,7 +200,7 @@ class TeacherSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if profile and profile.profile_picture:
             return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
-        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+        return None
 
     def get_location(self, obj):
         profile = getattr(obj.user, 'profile', None)
@@ -259,7 +259,7 @@ class MessageSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if profile and profile.profile_picture:
             return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
-        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+        return None
 
 
 class ThreadSerializer(serializers.ModelSerializer):
@@ -300,7 +300,7 @@ class ThreadSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if profile and profile.profile_picture:
             return request.build_absolute_uri(profile.profile_picture.url) if request else profile.profile_picture.url
-        return "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=80&h=80&fit=crop&auto=format"
+        return None
 
     def get_participantRole(self, obj):
         other = self.get_other_user(obj)
