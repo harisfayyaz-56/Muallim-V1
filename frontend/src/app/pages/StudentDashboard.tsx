@@ -5,6 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getProfile } from '../../api/profile';
 import { getMyBookings } from '../../api/availability';
+import defaultAvatar from '@/assets/def_avatar.avif';
 import { formatSlotTime, DEFAULT_TIMEZONE } from '../../utils/preferences';
 
 function getGreeting(): string {
@@ -17,7 +18,7 @@ function getGreeting(): string {
 export function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [userName, setUserName] = useState('');
-  const [userAvatar, setUserAvatar] = useState('');
+  const [userAvatar, setUserAvatar] = useState(defaultAvatar);
   const [userTimezone, setUserTimezone] = useState(DEFAULT_TIMEZONE);
   const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
   const [pastSessions, setPastSessions] = useState<any[]>([]);
@@ -52,9 +53,9 @@ export function StudentDashboard() {
             id: String(b.id),
             teacherId: String(b.teacher_id_read || b.teacher_id),
             teacherName: b.teacher_name,
-            teacherAvatar: b.teacher_avatar,
+            teacherAvatar: b.teacher_avatar || defaultAvatar,
             studentName: b.student_name,
-            studentAvatar: b.student_avatar,
+            studentAvatar: b.student_avatar || defaultAvatar,
             subject: b.subject,
             date: b.scheduled_date,
             time: formatSlotTime(b.scheduled_date, tz),
@@ -245,13 +246,11 @@ export function StudentDashboard() {
                 </h3>
                 <div className="space-y-3">
                   {[
-                    { name: 'Mohammed Al-Rashidi', msg: 'Great session today! Review chapter 6 for next time.', time: '2h ago', unread: true },
-                    { name: 'Sarah Chen', msg: 'Here\'s the GitHub repo for Wednesday\'s session.', time: '4h ago', unread: false },
+                    { name: 'Mohammed Al-Rashidi', msg: 'Great session today! Review chapter 6 for next time.', time: '2h ago', unread: true, avatar: null },
+                    { name: 'Sarah Chen', msg: 'Here\'s the GitHub repo for Wednesday\'s session.', time: '4h ago', unread: false, avatar: null },
                   ].map((n, i) => (
                     <Link key={i} to="/messages" className="flex items-start gap-3 hover:bg-[#F8F6F1] rounded-lg p-2 -mx-2 transition-colors">
-                      <div className="w-8 h-8 rounded-full bg-[#0D1B2A] flex items-center justify-center shrink-0 text-white text-xs" style={{ fontWeight: 700 }}>
-                        {n.name[0]}
-                      </div>
+                      <img src={n.avatar || defaultAvatar} alt={n.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className="text-[#0D1B2A] text-xs" style={{ fontWeight: 600 }}>{n.name}</p>
