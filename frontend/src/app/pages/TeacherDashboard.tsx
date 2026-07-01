@@ -77,7 +77,13 @@ export function TeacherDashboard() {
 
         const now = new Date();
         bookings.forEach((b: any) => {
-          const isActive = b.status === 'confirmed' || b.status === 'pending';
+          const sessionStart = new Date(b.scheduled_date);
+          const sessionEnd = new Date(sessionStart.getTime() + b.duration_minutes * 60 * 1000);
+          const hasPassed = sessionEnd.getTime() < now.getTime();
+
+          const isConfirmedOrPending = b.status === 'confirmed' || b.status === 'pending';
+          const isActive = isConfirmedOrPending && !hasPassed;
+
           const session = {
             id: String(b.id),
             teacherId: String(b.teacher_id_read || b.teacher_id),
@@ -89,7 +95,7 @@ export function TeacherDashboard() {
             date: new Date(b.scheduled_date).toLocaleDateString('en-AE', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }),
             time: formatSlotTime(b.scheduled_date, tz),
             duration: b.duration_minutes,
-            status: isActive ? 'upcoming' : b.status,
+            status: isActive ? 'upcoming' : (b.status === 'completed' || (isConfirmedOrPending && hasPassed) ? 'completed' : b.status),
             totalPaid: Number(b.amount),
             meetingLink: b.meeting_link,
             scheduledDate: b.scheduled_date,
@@ -99,7 +105,7 @@ export function TeacherDashboard() {
           if (isActive) {
             upcoming.push(session);
           } else {
-            if (b.status === 'completed') {
+            if (b.status === 'completed' || (isConfirmedOrPending && hasPassed)) {
               session.status = 'completed';
               totalEarnings += Number(b.amount);
               activeStudents.add(b.student_name);
