@@ -26,64 +26,71 @@ export function SearchPage() {
   const [minRating, setMinRating] = useState(0);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
+  const totalPages = Math.ceil(totalCount / 12);
+
+  // Sync search URL query parameter with component state
+  useEffect(() => {
+    const urlQ = searchParams.get('q') || '';
+    setQuery(urlQ);
+    setCurrentPage(1);
+  }, [searchParams]);
+
+  // Fetch paginated, filtered, and sorted teachers from API
   useEffect(() => {
     (async () => {
+      setLoading(true);
       try {
         const token = localStorage.getItem('muallim_access_token');
-        const data = await getTeachers(token || undefined);
-        setTeachers(data.map(mapProfileToTeacher));
+        const cat = CATEGORIES.find(c => c.id === selectedCategory);
+        const subjectParam = cat ? cat.label.split(' ')[0] : undefined;
+
+        const res = await getTeachers({
+          page: currentPage,
+          search: query || undefined,
+          subject: subjectParam,
+          min_rate: priceRange[0] || undefined,
+          max_rate: priceRange[1] || undefined,
+          min_rating: minRating || undefined,
+          ordering: sortBy || undefined,
+        }, token || undefined);
+
+        setTeachers(res.results.map(mapProfileToTeacher));
+        setTotalCount(res.count);
       } catch (err) {
         console.error('Error fetching teachers:', err);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [currentPage, query, selectedCategory, priceRange, sortBy, minRating]);
 
-  const filtered = useMemo(() => {
-    let results = [...teachers];
+  const changeCategory = (catId: string) => {
+    setSelectedCategory(catId);
+    setCurrentPage(1);
+  };
 
-    if (query) {
-      const q = query.toLowerCase();
-      results = results.filter(t =>
-        t.name.toLowerCase().includes(q) ||
-        (t.headline || '').toLowerCase().includes(q) ||
-        t.skills.some((s: string) => s.toLowerCase().includes(q)) ||
-        t.tags.some((tag: string) => tag.toLowerCase().includes(q))
-      );
-    }
+  const changePriceRange = (range: [number, number]) => {
+    setPriceRange(range);
+    setCurrentPage(1);
+  };
 
-    if (selectedCategory) {
-      const cat = CATEGORIES.find(c => c.id === selectedCategory);
-      if (cat) {
-        results = results.filter(t =>
-          t.skills.some((s: string) => s.toLowerCase().includes(cat.label.toLowerCase().split(' ')[0].toLowerCase()))
-        );
-      }
-    }
+  const changeMinRating = (rating: number) => {
+    setMinRating(rating);
+    setCurrentPage(1);
+  };
 
-    results = results.filter(t =>
-      t.hourlyRate >= priceRange[0] && t.hourlyRate <= priceRange[1]
-    );
-
-    if (minRating > 0) {
-      results = results.filter(t => t.rating >= minRating);
-    }
-
-    results = results.filter(t => t.status === 'approved');
-
-    if (sortBy === 'rating') results.sort((a, b) => b.rating - a.rating);
-    else if (sortBy === 'price_asc') results.sort((a, b) => a.hourlyRate - b.hourlyRate);
-    else if (sortBy === 'price_desc') results.sort((a, b) => b.hourlyRate - a.hourlyRate);
-    else if (sortBy === 'reviews') results.sort((a, b) => b.reviewsCount - a.reviewsCount);
-
-    return results;
-  }, [query, selectedCategory, priceRange, sortBy, minRating, teachers]);
+  const changeSortBy = (sort: string) => {
+    setSortBy(sort);
+    setCurrentPage(1);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearchParams({ q: query });
+    setCurrentPage(1);
   };
 
   return (
@@ -128,7 +135,7 @@ export function SearchPage() {
               <h4 className="text-[#0D1B2A] mb-4" style={{ fontWeight: 600, fontSize: '0.9rem' }}>Subject</h4>
               <div className="space-y-2">
                 <button
-                  onClick={() => setSelectedCategory('')}
+                  onClick={() => changeCategory('')}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!selectedCategory ? 'bg-[#0D1B2A] text-white' : 'text-[#6B7280] hover:bg-white hover:text-[#0D1B2A]'}`}
                 >
                   All Subjects
@@ -136,7 +143,7 @@ export function SearchPage() {
                 {CATEGORIES.map(cat => (
                   <button
                     key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id === selectedCategory ? '' : cat.id)}
+                    onClick={() => changeCategory(cat.id === selectedCategory ? '' : cat.id)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${selectedCategory === cat.id ? 'bg-[#0D1B2A] text-white' : 'text-[#6B7280] hover:bg-white hover:text-[#0D1B2A]'}`}
                   >
                     <span>{cat.label}</span>
@@ -161,7 +168,7 @@ export function SearchPage() {
                 ].map(opt => (
                   <button
                     key={opt.label}
-                    onClick={() => setPriceRange(opt.val)}
+                    onClick={() => changePriceRange(opt.val)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${priceRange[0] === opt.val[0] && priceRange[1] === opt.val[1] ? 'bg-[#0D1B2A] text-white' : 'text-[#6B7280] hover:bg-white hover:text-[#0D1B2A]'}`}
                   >
                     {opt.label}
@@ -177,7 +184,7 @@ export function SearchPage() {
                 {[0, 4, 4.5, 4.8].map(r => (
                   <button
                     key={r}
-                    onClick={() => setMinRating(r)}
+                    onClick={() => changeMinRating(r)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${minRating === r ? 'bg-[#0D1B2A] text-white' : 'text-[#6B7280] hover:bg-white hover:text-[#0D1B2A]'}`}
                   >
                     {r === 0 ? 'Any rating' : (
@@ -198,7 +205,7 @@ export function SearchPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <span className="text-[#0D1B2A] text-sm" style={{ fontWeight: 600 }}>
-                  {filtered.length} teacher{filtered.length !== 1 ? 's' : ''} found
+                  {totalCount} teacher{totalCount !== 1 ? 's' : ''} found
                 </span>
                 {query && (
                   <span className="text-[#9CA3AF] text-sm ml-2">for "{query}"</span>
@@ -214,7 +221,7 @@ export function SearchPage() {
                 <div className="relative">
                   <select
                     value={sortBy}
-                    onChange={e => setSortBy(e.target.value)}
+                    onChange={e => changeSortBy(e.target.value)}
                     className="appearance-none pl-3 pr-8 py-2 border border-[rgba(13,27,42,0.15)] rounded-lg text-sm text-[#0D1B2A] bg-white focus:outline-none focus:border-[#C8962A] cursor-pointer"
                   >
                     {SORT_OPTIONS.map(o => (
@@ -231,7 +238,7 @@ export function SearchPage() {
                 <Loader2 className="w-8 h-8 animate-spin" />
                 <p className="text-sm text-[#9CA3AF] mt-2">Loading teachers...</p>
               </div>
-            ) : filtered.length === 0 ? (
+            ) : teachers.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-16 h-16 bg-[#F8F6F1] rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Search className="w-8 h-8 text-[#9CA3AF]" />
@@ -241,18 +248,63 @@ export function SearchPage() {
                 </h3>
                 <p className="text-[#9CA3AF] text-sm">Try adjusting your filters or search terms</p>
                 <button
-                  onClick={() => { setQuery(''); setSelectedCategory(''); setPriceRange([0, 500]); setMinRating(0); }}
+                  onClick={() => { setQuery(''); setSelectedCategory(''); setPriceRange([0, 500]); setMinRating(0); setCurrentPage(1); }}
                   className="mt-4 px-4 py-2 bg-[#0D1B2A] text-white rounded-lg text-sm"
                 >
                   Clear All Filters
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {filtered.map(teacher => (
-                  <TeacherCard key={teacher.id} teacher={teacher} />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  {teachers.map(teacher => (
+                    <TeacherCard key={teacher.id} teacher={teacher} />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="mt-8 flex items-center justify-between border-t border-[rgba(13,27,42,0.06)] pt-6">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className={`px-4 py-2 text-sm font-semibold rounded-xl border transition-all ${
+                        currentPage === 1
+                          ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+                          : 'border-[rgba(13,27,42,0.15)] text-[#0D1B2A] hover:bg-[#F8F6F1] cursor-pointer'
+                      }`}
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-9 h-9 flex items-center justify-center text-sm font-bold rounded-xl transition-all ${
+                            currentPage === page
+                              ? 'bg-[#0D1B2A] text-white shadow-sm'
+                              : 'text-[#6B7280] hover:bg-[#F8F6F1] hover:text-[#0D1B2A]'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className={`px-4 py-2 text-sm font-semibold rounded-xl border transition-all ${
+                        currentPage === totalPages
+                          ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+                          : 'border-[rgba(13,27,42,0.15)] text-[#0D1B2A] hover:bg-[#F8F6F1] cursor-pointer'
+                      }`}
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

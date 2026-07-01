@@ -238,7 +238,8 @@ class UserManagementTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify self is not in the list
-        teacher_ids = [t['id'] for t in response.data]
+        results = response.data.get('results', response.data)
+        teacher_ids = [t['id'] for t in results]
         self.assertNotIn(self.teacher.id, teacher_ids)
 
     def test_teacher_cannot_book_themselves(self):

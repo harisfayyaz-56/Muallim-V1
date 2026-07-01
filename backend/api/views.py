@@ -404,9 +404,18 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
         )
 
 
+from rest_framework.pagination import PageNumberPagination
+
+class TeacherPagination(PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'limit'
+    max_page_size = 100
+
+
 class TeacherViewSet(viewsets.ModelViewSet):
     """ViewSet for teacher profile management"""
     serializer_class = TeacherSerializer
+    pagination_class = TeacherPagination
 
     def get_permissions(self):
         from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -416,14 +425,86 @@ class TeacherViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from .models.users import Teacher
+        from django.db.models import Q
         if self.action in ['list', 'retrieve']:
             if self.request.user.is_authenticated and (self.request.user.is_staff or self.request.user.is_superuser):
                 qs = Teacher.objects.all()
             else:
                 qs = Teacher.objects.filter(status='approved')
 
-            if self.action == 'list' and self.request.user.is_authenticated:
-                qs = qs.exclude(user=self.request.user)
+            if self.action == 'list':
+                if self.request.user.is_authenticated:
+                    qs = qs.exclude(user=self.request.user)
+
+                # --- 1. FILTERING ---
+                # Search query (name, headline, skills, categories, tags)
+                search = self.request.query_params.get('search')
+                if search:
+                    qs = qs.filter(
+                        Q(user__first_name__icontains=search) |
+                        Q(user__last_name__icontains=search) |
+                        Q(user__username__icontains=search) |
+                        Q(headline__icontains=search) |
+                        Q(qualifications__icontains=search) |
+                        Q(subjects__icontains=search) |
+                        Q(categories__icontains=search) |
+                        Q(tags__icontains=search)
+                    )
+
+                # Filter by subject / category (e.g. from filter sidebar)
+                subject = self.request.query_params.get('subject')
+                if subject:
+                    qs = qs.filter(
+                        Q(categories__icontains=subject) |
+                        Q(subjects__icontains=subject)
+                    )
+
+                # Filter by hourly_rate range
+                min_rate = self.request.query_params.get('min_rate')
+                if min_rate:
+                    try:
+                        qs = qs.filter(hourly_rate__gte=float(min_rate))
+                    except ValueError:
+                        pass
+
+                max_rate = self.request.query_params.get('max_rate')
+                if max_rate:
+                    try:
+                        qs = qs.filter(hourly_rate__lte=float(max_rate))
+                    except ValueError:
+                        pass
+
+                # Filter by minimum rating
+                min_rating = self.request.query_params.get('min_rating')
+                if min_rating:
+                    try:
+                        qs = qs.filter(rating__gte=float(min_rating))
+                    except ValueError:
+                        pass
+
+                # --- 2. SORTING / ORDERING ---
+                ordering = self.request.query_params.get('ordering')
+                if ordering:
+                    allowed_fields = {
+                        'hourly_rate': 'hourly_rate',
+                        '-hourly_rate': '-hourly_rate',
+                        'price_asc': 'hourly_rate',
+                        'price_desc': '-hourly_rate',
+                        'rating': '-rating',
+                        '-rating': '-rating',
+                        'reviews': '-total_reviews',
+                        'total_reviews': '-total_reviews',
+                        '-total_reviews': '-total_reviews',
+                        'created_at': '-created_at',
+                        '-created_at': '-created_at',
+                    }
+                    order_by_field = allowed_fields.get(ordering)
+                    if order_by_field:
+                        qs = qs.order_by(order_by_field)
+                    else:
+                        qs = qs.order_by('-rating')
+                else:
+                    qs = qs.order_by('-rating')
             return qs
         return Teacher.objects.filter(user=self.request.user)
 

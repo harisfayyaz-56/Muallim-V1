@@ -300,17 +300,46 @@ export const updateTeacherProfile = async (
   return response.json();
 };
 
+export interface PaginatedTeachersResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: TeacherProfile[];
+}
+
 /**
- * Get public list of approved teachers
+ * Get public list of approved teachers with optional filtering, sorting, and pagination
  */
-export const getTeachers = async (token?: string): Promise<TeacherProfile[]> => {
+export const getTeachers = async (
+  params?: {
+    page?: number;
+    search?: string;
+    subject?: string;
+    min_rate?: number;
+    max_rate?: number;
+    min_rating?: number;
+    ordering?: string;
+  },
+  token?: string
+): Promise<PaginatedTeachersResponse> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const response = await fetch(`${API_BASE}/teacher/`, {
+
+  const queryParts: string[] = [];
+  if (params) {
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        queryParts.push(`${key}=${encodeURIComponent(val)}`);
+      }
+    });
+  }
+  const queryString = queryParts.length ? `?${queryParts.join('&')}` : '';
+
+  const response = await fetch(`${API_BASE}/teacher/${queryString}`, {
     method: 'GET',
     headers,
   });
