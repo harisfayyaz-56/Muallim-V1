@@ -878,16 +878,21 @@ class ChatViewSet(viewsets.ViewSet):
                     </body>
                 </html>
                 """
-                send_mail(
-                    subject=f'New message from {sender_name} on Muallim',
-                    message=f'You have received a new message from {sender_name}: "{content[:100]}..."',
-                    from_email=None,
-                    recipient_list=[recipient_email],
-                    html_message=html_message,
-                    fail_silently=True,
-                )
+                import threading
+                threading.Thread(
+                    target=send_mail,
+                    kwargs={
+                        "subject": f'New message from {sender_name} on Muallim',
+                        "message": f'You have received a new message from {sender_name}: "{content[:100]}..."',
+                        "from_email": None,
+                        "recipient_list": [recipient_email],
+                        "html_message": html_message,
+                        "fail_silently": True,
+                    },
+                    daemon=True
+                ).start()
         except Exception as e:
-            print(f"Error sending message email notification: {str(e)}")
+            print(f"Error sending message email notification in background: {str(e)}")
             
         serializer = MessageSerializer(message, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
