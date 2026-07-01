@@ -305,10 +305,11 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
 
             creds = Credentials(
                 token=None,
-                refresh_token=django_settings.GOOGLE_REFRESH_TOKEN,
+                refresh_token=django_settings.GOOGLE_CALENDAR_REFRESH_TOKEN,
                 token_uri="https://oauth2.googleapis.com/token",
-                client_id=django_settings.GOOGLE_CLIENT_ID,
-                client_secret=django_settings.GOOGLE_CLIENT_SECRET
+                client_id=django_settings.GOOGLE_CALENDAR_CLIENT_ID,
+                client_secret=django_settings.GOOGLE_CALENDAR_CLIENT_SECRET,
+                scopes=['https://www.googleapis.com/auth/calendar']
             )
             service = build('calendar', 'v3', credentials=creds)
 
@@ -319,9 +320,20 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
             from datetime import timedelta as _timedelta
             end_dt = start_dt + _timedelta(minutes=duration_minutes)
 
-            teacher = booking_data.get('teacher')
+            # Query the Teacher object using teacher_id from booking_data
+            from .models.users import Teacher
+            teacher_id = booking_data.get('teacher_id')
+            teacher = Teacher.objects.filter(pk=teacher_id).first()
+
             student_name = self.request.user.get_full_name() or self.request.user.username
-            teacher_name = teacher.user.get_full_name() if teacher else 'Teacher'
+            teacher_name = teacher.user.get_full_name() if (teacher and teacher.user) else 'Teacher'
+
+            # Build attendees list safely
+            attendees = []
+            if self.request.user.email:
+                attendees.append({'email': self.request.user.email})
+            if teacher and teacher.user and teacher.user.email:
+                attendees.append({'email': teacher.user.email})
 
             event_body = {
                 'summary': f'Muallim Session: {student_name} with {teacher_name}',
@@ -333,6 +345,9 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
                     'dateTime': end_dt.isoformat(),
                     'timeZone': 'UTC',
                 },
+                # Inviting teacher & student as attendees so they can join
+                # the Google Meet directly without needing the host to admit them.
+                'attendees': attendees,
                 'conferenceData': {
                     'createRequest': {
                         'requestId': f"muallim-{uuid.uuid4().hex}",
@@ -340,6 +355,7 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
                     }
                 },
             }
+
 
             created_event = service.events().insert(
                 calendarId=django_settings.GOOGLE_CALENDAR_ID,
