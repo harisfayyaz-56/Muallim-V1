@@ -18,6 +18,14 @@ services:
     networks:
       - muallim-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: muallim-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - muallim-network
+
   backend:
     build: ./backend
     container_name: muallim-backend
@@ -34,6 +42,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     networks:
       - muallim-network

@@ -10,5 +10,8 @@ Pillow>=10.0
 djangorestframework-simplejwt>=5.2.2
 google-auth>=2.20.0
 google-api-python-client>=2.100.0
-
 requests>=2.30.0
+
+daphne>=4.0.0
+channels>=4.0.0
+channels-redis>=4.0.0

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router';
 import { Send, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { getProfile } from '../../api/profile';
 import defaultAvatar from '@/assets/def_avatar.avif';
-import { getThreads, sendMessage as sendChatMessage, markThreadRead } from '../../api/chat';
+import { getThreads, markThreadRead } from '../../api/chat';
 
 export function MessagesPage() {
   const location = useLocation();
@@ -16,6 +16,7 @@ export function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
@@ -37,54 +38,95 @@ export function MessagesPage() {
     })();
   }, []);
 
-  // Fetch threads and handle query params
+  // Fetch threads once on mount
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
     if (!token) return;
 
     let isMounted = true;
 
-    const fetchConvs = async (isFirstLoad = false) => {
+    const fetchConvs = async () => {
       try {
         const data = await getThreads(token);
         if (!isMounted) return;
         setConversations(data);
         
-        // If first load or no selection, check query params
-        if (isFirstLoad) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const queryThreadId = urlParams.get('threadId');
-          
-          if (queryThreadId) {
-            setSelectedConvId(queryThreadId);
-            setMobileView('chat');
-            // mark it as read immediately
-            await markThreadRead(token, queryThreadId);
-            // update local list
-            setConversations(prev => prev.map(c => String(c.id) === String(queryThreadId) ? { ...c, unreadCount: 0 } : c));
-          } else if (data.length > 0 && !selectedConvId) {
-            setSelectedConvId(String(data[0].id));
-          }
+        // Check query params
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryThreadId = urlParams.get('threadId');
+        
+        if (queryThreadId) {
+          setSelectedConvId(queryThreadId);
+          setMobileView('chat');
+          await markThreadRead(token, queryThreadId);
+          setConversations(prev => prev.map(c => String(c.id) === String(queryThreadId) ? { ...c, unreadCount: 0 } : c));
+        } else if (data.length > 0 && !selectedConvId) {
+          setSelectedConvId(String(data[0].id));
         }
       } catch (err) {
         console.error('Error fetching conversations:', err);
-        if (isFirstLoad) {
-          setError('Failed to load conversations.');
-        }
+        setError('Failed to load conversations.');
       } finally {
-        if (isFirstLoad && isMounted) {
+        if (isMounted) {
           setLoading(false);
         }
       }
     };
 
-    fetchConvs(loading);
+    fetchConvs();
 
-    // Poll every 4 seconds to get new messages in real time
-    const interval = setInterval(() => fetchConvs(false), 4000);
     return () => {
       isMounted = false;
-      clearInterval(interval);
+    };
+  }, []);
+
+  // Manage WebSocket connection for selected conversation
+  useEffect(() => {
+    if (!selectedConvId) return;
+
+    const token = localStorage.getItem('muallim_access_token');
+    if (!token) return;
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Connect to backend port 8000
+    const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/ws/chat/${selectedConvId}/?token=${token}`;
+
+    const ws = new WebSocket(wsUrl);
+    socketRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'message') {
+          const newMsg = data.message;
+          setConversations(prev => prev.map(conv => {
+            if (String(conv.id) !== String(selectedConvId)) return conv;
+            
+            const messageExists = conv.messages.some((m: any) => m.id === newMsg.id);
+            if (messageExists) return conv;
+
+            return {
+              ...conv,
+              lastMessage: newMsg.content,
+              lastMessageTime: newMsg.timestamp,
+              messages: [...(conv.messages || []), newMsg],
+            };
+          }));
+        } else if (data.type === 'error') {
+          setSendError(data.detail || 'An error occurred.');
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.error('WebSocket connection error:', err);
+    };
+
+    return () => {
+      ws.close();
+      socketRef.current = null;
     };
   }, [selectedConvId]);
 
@@ -94,26 +136,13 @@ export function MessagesPage() {
     if (!newMessage.trim() || !selectedConvId) return;
     setSendError(null);
     
-    const token = localStorage.getItem('muallim_access_token');
-    if (!token) return;
-
     const msgContent = newMessage.trim();
     setNewMessage(''); // clear input immediately for snappy feel
 
-    try {
-      const sentMsg = await sendChatMessage(token, selectedConvId, msgContent);
-      setConversations(prev => prev.map(conv => {
-        if (String(conv.id) !== String(selectedConvId)) return conv;
-        return {
-          ...conv,
-          lastMessage: sentMsg.content,
-          lastMessageTime: sentMsg.timestamp,
-          messages: [...conv.messages, sentMsg],
-        };
-      }));
-    } catch (err: any) {
-      console.error('Send message failed:', err);
-      setSendError(err.message || 'Failed to send message.');
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ content: msgContent }));
+    } else {
+      setSendError('Connection lost. Please wait or refresh.');
       setNewMessage(msgContent); // restore message content
     }
   };
@@ -138,6 +167,7 @@ export function MessagesPage() {
     const d = new Date(ts);
     return d.toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit' });
   };
+
 
   const formatDate = (ts: string) => {
     const d = new Date(ts);
