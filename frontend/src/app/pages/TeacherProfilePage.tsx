@@ -215,7 +215,7 @@ export function TeacherProfilePage() {
 
   const sessionPrice = teacher.hourlyRate * (duration / 60);
   const platformFee = Math.round(sessionPrice * (PLATFORM_FEE_PERCENT / 100));
-  const total = sessionPrice + platformFee;
+  const total = sessionPrice;
 
   const getSlotsForDay = (day: string) => {
     const rawSlots = slotsByDay[day] || [];
@@ -543,7 +543,7 @@ export function TeacherProfilePage() {
                   </span>
                   <span className="text-white/60 text-sm">AED / hour</span>
                 </div>
-                <p className="text-white/50 text-xs mt-1">Platform fee included in total below</p>
+                <p className="text-white/50 text-xs mt-1">Platform fee paid by teacher</p>
               </div>
 
               <div className="p-5 space-y-4">
@@ -571,7 +571,7 @@ export function TeacherProfilePage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#6B7280]">Platform fee ({PLATFORM_FEE_PERCENT}%)</span>
-                    <span className="text-[#0D1B2A]">AED {platformFee.toFixed(2)}</span>
+                    <span className="text-[#9CA3AF] italic text-xs">AED {platformFee.toFixed(2)} (paid by teacher)</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[#6B7280]">VAT</span>
@@ -582,6 +582,7 @@ export function TeacherProfilePage() {
                     <span className="text-[#0D1B2A]" style={{ fontWeight: 700 }}>AED {total.toFixed(2)}</span>
                   </div>
                 </div>
+
 
                 {selectedSlot && (
                   <div className="space-y-3 border-t border-[rgba(13,27,42,0.08)] pt-4">

@@ -304,7 +304,7 @@ export function BookingPage() {
 
   const sessionPrice = teacher.hourlyRate * (duration / 60);
   const platformFee = Math.round(sessionPrice * (PLATFORM_FEE_PERCENT / 100));
-  const total = sessionPrice + platformFee;
+  const total = sessionPrice;
 
   const selectedDate = selectedDay ? new Date(year, month, selectedDay) : null;
 
@@ -608,7 +608,7 @@ export function BookingPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#6B7280]">Platform fee ({PLATFORM_FEE_PERCENT}%)</span>
-                        <span className="text-[#0D1B2A]">AED {platformFee.toFixed(2)}</span>
+                        <span className="text-[#9CA3AF] italic text-xs">AED {platformFee.toFixed(2)} (paid by teacher)</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#6B7280]">VAT</span>
@@ -687,7 +687,7 @@ export function BookingPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#6B7280]">Platform fee ({PLATFORM_FEE_PERCENT}%)</span>
-                      <span className="text-[#0D1B2A]">AED {platformFee.toFixed(2)}</span>
+                      <span className="text-[#9CA3AF] italic text-xs">AED {platformFee.toFixed(2)} (paid by teacher)</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#6B7280]">VAT</span>

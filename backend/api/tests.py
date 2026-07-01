@@ -439,8 +439,8 @@ class UserManagementTests(TestCase):
         self.assertEqual(payment.payment_status, 'holding_mock')
         self.assertEqual(payment.payment_method, 'mock')
         self.assertEqual(payment.amount, Decimal('100.00'))
-        self.assertEqual(payment.commission, Decimal('5.00'))
-        self.assertEqual(payment.teacher_earns, Decimal('95.00'))
+        self.assertEqual(payment.commission, Decimal('12.00'))
+        self.assertEqual(payment.teacher_earns, Decimal('88.00'))
         self.assertEqual(response.data['payment_status'], 'holding_mock')
         self.assertEqual(response.data['payment_method'], 'mock')
 

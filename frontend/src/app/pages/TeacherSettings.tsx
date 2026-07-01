@@ -543,11 +543,11 @@ export function TeacherSettings() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#6B7280]">Platform fee (12%)</span>
-                      <span className="text-[#0D1B2A]">AED {Math.round(hourlyRate * 0.12)}</span>
+                      <span className="text-[#9CA3AF] italic text-xs">AED {Math.round(hourlyRate * 0.12)} (paid by you)</span>
                     </div>
                     <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
                       <span className="text-[#0D1B2A]" style={{ fontWeight: 600 }}>Student pays</span>
-                      <span className="text-[#0D1B2A]" style={{ fontWeight: 700 }}>AED {hourlyRate + Math.round(hourlyRate * 0.12)}</span>
+                      <span className="text-[#0D1B2A]" style={{ fontWeight: 700 }}>AED {hourlyRate}</span>
                     </div>
                     <div className="flex justify-between border-t border-[rgba(13,27,42,0.08)] pt-2">
                       <span className="text-emerald-700" style={{ fontWeight: 600 }}>You earn (88%)</span>
@@ -555,6 +555,7 @@ export function TeacherSettings() {
                     </div>
                   </div>
                 </div>
+
 
                 <button onClick={handleSave} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm transition-colors ${saved ? 'bg-emerald-500 text-white' : 'bg-[#0D1B2A] text-white hover:bg-[#1a2d45]'}`} style={{ fontWeight: 600 }}>
                   {saved ? '✓ Saved' : <><ArrowRight className="w-4 h-4" /> Next</>}

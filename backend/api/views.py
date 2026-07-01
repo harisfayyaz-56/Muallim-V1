@@ -387,7 +387,7 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
         
         # Create corresponding mock payment record (mock escrow / holding_mock)
         amount = booking.amount
-        commission = amount * Decimal('0.05')
+        commission = amount * Decimal('0.12')
         teacher_earns = amount - commission
         
         Payment.objects.create(
