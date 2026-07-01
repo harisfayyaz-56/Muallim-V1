@@ -110,6 +110,10 @@ export function TeacherDashboard() {
           }
         });
 
+        // Sort bookings in ascending order (nearest sessions first)
+        upcoming.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+        past.sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+
         setUpcomingSessions(upcoming);
         setPastSessions(past);
         setEarningsThisMonth(totalEarnings);

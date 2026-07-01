@@ -5,6 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { getProfile } from '../../api/profile';
 import { getMyBookings } from '../../api/availability';
+import { getThreads } from '../../api/chat';
 import defaultAvatar from '@/assets/def_avatar.avif';
 import { formatSlotTime, DEFAULT_TIMEZONE } from '../../utils/preferences';
 
@@ -14,6 +15,20 @@ function getGreeting(): string {
   if (hour < 17) return 'Good afternoon';
   return 'Good evening';
 }
+
+const formatMessageTime = (ts: string) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / (60 * 1000));
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return d.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' });
+};
 
 export function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
@@ -25,6 +40,7 @@ export function StudentDashboard() {
   const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   const [hoursLearned, setHoursLearned] = useState(0);
   const [subjectsCount, setSubjectsCount] = useState(0);
+  const [conversations, setConversations] = useState<any[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('muallim_access_token');
@@ -81,11 +97,23 @@ export function StudentDashboard() {
           uniqueSubjects.add(b.subject);
         });
 
+        // Sort bookings in ascending order (nearest sessions first)
+        upcoming.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        past.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
         setUpcomingSessions(upcoming);
         setPastSessions(past);
         setCompletedSessionsCount(completedCount);
         setHoursLearned(Math.round(learnedMinutes / 60));
         setSubjectsCount(uniqueSubjects.size);
+
+        // Fetch real conversations
+        try {
+          const threads = await getThreads(token);
+          setConversations(threads);
+        } catch (chatErr) {
+          console.error('StudentDashboard failed to load conversations:', chatErr);
+        }
       } catch (err) {
         console.error('StudentDashboard: failed to load profile or bookings', err);
       }
@@ -245,22 +273,23 @@ export function StudentDashboard() {
                   Messages
                 </h3>
                 <div className="space-y-3">
-                  {[
-                    { name: 'Mohammed Al-Rashidi', msg: 'Great session today! Review chapter 6 for next time.', time: '2h ago', unread: true, avatar: null },
-                    { name: 'Sarah Chen', msg: 'Here\'s the GitHub repo for Wednesday\'s session.', time: '4h ago', unread: false, avatar: null },
-                  ].map((n, i) => (
-                    <Link key={i} to="/messages" className="flex items-start gap-3 hover:bg-[#F8F6F1] rounded-lg p-2 -mx-2 transition-colors">
-                      <img src={n.avatar || defaultAvatar} alt={n.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[#0D1B2A] text-xs" style={{ fontWeight: 600 }}>{n.name}</p>
-                          <span className="text-[#9CA3AF] text-xs">{n.time}</span>
+                  {conversations.length === 0 ? (
+                    <p className="text-xs text-[#9CA3AF] italic">No messages yet</p>
+                  ) : (
+                    conversations.slice(0, 3).map((conv) => (
+                      <Link key={conv.id} to={`/messages?threadId=${conv.id}`} className="flex items-start gap-3 hover:bg-[#F8F6F1] rounded-lg p-2 -mx-2 transition-colors">
+                        <img src={conv.participantAvatar || defaultAvatar} alt={conv.participantName} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[#0D1B2A] text-xs" style={{ fontWeight: 600 }}>{conv.participantName}</p>
+                            <span className="text-[#9CA3AF] text-[10px]">{formatMessageTime(conv.lastMessageTime)}</span>
+                          </div>
+                          <p className="text-[#9CA3AF] text-xs truncate mt-0.5">{conv.lastMessage || 'Start a conversation'}</p>
                         </div>
-                        <p className="text-[#9CA3AF] text-xs truncate mt-0.5">{n.msg}</p>
-                      </div>
-                      {n.unread && <div className="w-2 h-2 bg-[#C8962A] rounded-full shrink-0 mt-1.5" />}
-                    </Link>
-                  ))}
+                        {conv.unreadCount > 0 && <div className="w-2 h-2 bg-[#C8962A] rounded-full shrink-0 mt-1.5" />}
+                      </Link>
+                    ))
+                  )}
                 </div>
                 <Link to="/messages" className="block text-center text-xs text-[#C8962A] hover:underline mt-3">
                   View all messages →
