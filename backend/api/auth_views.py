@@ -43,9 +43,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         user = None
         if '@' in login_value:
-            user = User.objects.filter(email=login_value).first()
+            user = User.objects.filter(email__iexact=login_value).first()
         else:
-            user = User.objects.filter(username=login_value).first()
+            user = User.objects.filter(username__iexact=login_value).first()
 
         if not user:
             raise serializers.ValidationError('No active account found with the given credentials')
