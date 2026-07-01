@@ -694,7 +694,10 @@ export function TeacherSettings() {
                             const end = isString ? getEndTime(slot, sessionDuration) : slot.end;
                             const [sh, sm] = start.split(':').map(Number);
                             const [eh, em] = end.split(':').map(Number);
-                            const diff = (eh * 60 + em) - (sh * 60 + sm);
+                            let diff = (eh * 60 + em) - (sh * 60 + sm);
+                            if (diff < 0) {
+                              diff += 24 * 60;
+                            }
 
                              return (
                               <div
