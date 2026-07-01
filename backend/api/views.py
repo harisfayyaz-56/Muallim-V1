@@ -432,8 +432,13 @@ class TeacherViewSet(viewsets.ModelViewSet):
         from django.shortcuts import get_object_or_404
         if self.action in ['retrieve', 'approve', 'reject', 'availability', 'slots']:
             lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-            filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
-            return get_object_or_404(Teacher, **filter_kwargs)
+            val = self.kwargs[lookup_url_kwarg]
+            try:
+                # Try by Teacher profile PK (id) first
+                return Teacher.objects.get(pk=val)
+            except (Teacher.DoesNotExist, ValueError):
+                # Fallback to User ID
+                return get_object_or_404(Teacher, user__id=val)
         return get_object_or_404(Teacher, user=self.request.user)
 
     @action(detail=False, methods=['get', 'patch', 'post'], permission_classes=[IsAuthenticated])
