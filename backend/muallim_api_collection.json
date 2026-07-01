@@ -851,7 +851,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"teacher\": \"{{teacher_uuid}}\",\n    \"scheduled_date\": \"2026-07-02T10:00:00Z\",\n    \"duration_minutes\": 60,\n    \"amount\": \"25.00\",\n    \"notes\": \"Would like to focus on basic grammar and Tajweed rules.\"\n}",
+							"raw": "{\n    \"teacher_id\": {{teacher_id}},\n    \"subject\": \"Quran\",\n    \"scheduled_date\": \"2026-07-02T10:00:00Z\",\n    \"duration_minutes\": 60,\n    \"amount\": \"100.00\",\n    \"notes\": \"Would like to focus on basic grammar and Tajweed rules.\",\n    \"description\": \"Would like to focus on basic grammar and Tajweed rules.\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -943,7 +943,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"teacher_id\": \"{{teacher_uuid}}\"\n}",
+							"raw": "{\n    \"teacher_id\": {{teacher_id}}\n}",
 							"options": {
 								"raw": {
 									"language": "json"
