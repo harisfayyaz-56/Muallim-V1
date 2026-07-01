@@ -295,10 +295,73 @@ class BookingViewSet(rf_viewsets.ModelViewSet):
         from django.utils import timezone
         from .models.payments import Payment
         
-        # Generate a random 10-letter code for Google Meet
-        code = "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=10))
-        formatted_code = f"{code[:3]}-{code[3:7]}-{code[7:]}"
-        meeting_link = f"https://meet.google.com/abc-{formatted_code}"
+        # Generate a real Google Meet link via the Google Calendar API (Option A - OAuth 2.0 Free Mode).
+        # Authenticates on behalf of the central calendar owner using the OAuth 2.0 Refresh Token.
+        meeting_link = None
+        try:
+            from django.conf import settings as django_settings
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+
+            creds = Credentials(
+                token=None,
+                refresh_token=django_settings.GOOGLE_REFRESH_TOKEN,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=django_settings.GOOGLE_CLIENT_ID,
+                client_secret=django_settings.GOOGLE_CLIENT_SECRET
+            )
+            service = build('calendar', 'v3', credentials=creds)
+
+            # Determine start/end time from serializer validated data
+            booking_data = serializer.validated_data
+            start_dt = booking_data.get('scheduled_date')
+            duration_minutes = booking_data.get('duration_minutes', 60)
+            from datetime import timedelta as _timedelta
+            end_dt = start_dt + _timedelta(minutes=duration_minutes)
+
+            teacher = booking_data.get('teacher')
+            student_name = self.request.user.get_full_name() or self.request.user.username
+            teacher_name = teacher.user.get_full_name() if teacher else 'Teacher'
+
+            event_body = {
+                'summary': f'Muallim Session: {student_name} with {teacher_name}',
+                'start': {
+                    'dateTime': start_dt.isoformat(),
+                    'timeZone': 'UTC',
+                },
+                'end': {
+                    'dateTime': end_dt.isoformat(),
+                    'timeZone': 'UTC',
+                },
+                'conferenceData': {
+                    'createRequest': {
+                        'requestId': f"muallim-{uuid.uuid4().hex}",
+                        'conferenceSolutionKey': {'type': 'hangoutsMeet'},
+                    }
+                },
+            }
+
+            created_event = service.events().insert(
+                calendarId=django_settings.GOOGLE_CALENDAR_ID,
+                body=event_body,
+                conferenceDataVersion=1,
+            ).execute()
+
+            # Extract the real Google Meet link from the API response
+            entry_points = created_event.get('conferenceData', {}).get('entryPoints', [])
+            for ep in entry_points:
+                if ep.get('entryPointType') == 'video':
+                    meeting_link = ep.get('uri')
+                    break
+
+        except Exception as e:
+            print(f"[Google Meet] Failed to create meeting via Calendar API: {e}")
+
+        # Fallback: if Google API fails for any reason, use Jitsi so booking still works
+        if not meeting_link:
+            room_id = uuid.uuid4().hex[:16]
+            meeting_link = f"https://meet.jit.si/Muallim-{room_id}"
+
         
         booking = serializer.save(
             student=self.request.user, 
