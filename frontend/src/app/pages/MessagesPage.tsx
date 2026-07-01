@@ -87,45 +87,72 @@ export function MessagesPage() {
     const token = localStorage.getItem('muallim_access_token');
     if (!token) return;
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Connect to backend port 8000
-    const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/ws/chat/${selectedConvId}/?token=${token}`;
+    let ws: WebSocket | null = null;
+    let reconnectTimeoutId: any = null;
+    let isUnmounted = false;
 
-    const ws = new WebSocket(wsUrl);
-    socketRef.current = ws;
+    const connect = () => {
+      if (isUnmounted) return;
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'message') {
-          const newMsg = data.message;
-          setConversations(prev => prev.map(conv => {
-            if (String(conv.id) !== String(selectedConvId)) return conv;
-            
-            const messageExists = conv.messages.some((m: any) => m.id === newMsg.id);
-            if (messageExists) return conv;
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/ws/chat/${selectedConvId}/?token=${token}`;
 
-            return {
-              ...conv,
-              lastMessage: newMsg.content,
-              lastMessageTime: newMsg.timestamp,
-              messages: [...(conv.messages || []), newMsg],
-            };
-          }));
-        } else if (data.type === 'error') {
-          setSendError(data.detail || 'An error occurred.');
+      ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected to thread', selectedConvId);
+        setSendError(null);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'message') {
+            const newMsg = data.message;
+            setConversations(prev => prev.map(conv => {
+              if (String(conv.id) !== String(selectedConvId)) return conv;
+              
+              const messageExists = conv.messages.some((m: any) => m.id === newMsg.id);
+              if (messageExists) return conv;
+
+              return {
+                ...conv,
+                lastMessage: newMsg.content,
+                lastMessageTime: newMsg.timestamp,
+                messages: [...(conv.messages || []), newMsg],
+              };
+            }));
+          } else if (data.type === 'error') {
+            setSendError(data.detail || 'An error occurred.');
+          }
+        } catch (err) {
+          console.error('Error parsing WebSocket message:', err);
         }
-      } catch (err) {
-        console.error('Error parsing WebSocket message:', err);
-      }
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket connection error:', err);
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket connection closed for thread', selectedConvId, event.reason);
+        if (!isUnmounted) {
+          reconnectTimeoutId = setTimeout(connect, 2000);
+        }
+      };
     };
 
-    ws.onerror = (err) => {
-      console.error('WebSocket connection error:', err);
-    };
+    connect();
 
     return () => {
-      ws.close();
+      isUnmounted = true;
+      if (ws) {
+        ws.close();
+      }
+      if (reconnectTimeoutId) {
+        clearTimeout(reconnectTimeoutId);
+      }
       socketRef.current = null;
     };
   }, [selectedConvId]);
@@ -139,11 +166,19 @@ export function MessagesPage() {
     const msgContent = newMessage.trim();
     setNewMessage(''); // clear input immediately for snappy feel
 
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ content: msgContent }));
+    if (socketRef.current) {
+      if (socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({ content: msgContent }));
+      } else if (socketRef.current.readyState === WebSocket.CONNECTING) {
+        setSendError('Connecting to chat... Please send again in a second.');
+        setNewMessage(msgContent);
+      } else {
+        setSendError('Connection lost. Please wait or refresh.');
+        setNewMessage(msgContent);
+      }
     } else {
-      setSendError('Connection lost. Please wait or refresh.');
-      setNewMessage(msgContent); // restore message content
+      setSendError('Connection not established. Please refresh.');
+      setNewMessage(msgContent);
     }
   };
 
