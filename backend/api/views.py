@@ -419,7 +419,7 @@ class TeacherViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         from rest_framework.permissions import AllowAny, IsAuthenticated
-        if self.action in ['list', 'retrieve', 'availability', 'slots']:
+        if self.action in ['list', 'retrieve', 'availability', 'slots', 'categories']:
             return [AllowAny()]
         return [IsAuthenticated()]
 
@@ -478,7 +478,9 @@ class TeacherViewSet(viewsets.ModelViewSet):
                 min_rating = self.request.query_params.get('min_rating')
                 if min_rating:
                     try:
-                        qs = qs.filter(rating__gte=float(min_rating))
+                        # Since a rating of 0.0 represents a new teacher with no reviews (defaulting to 5.0 on frontend),
+                        # they should match any minimum rating filter.
+                        qs = qs.filter(Q(rating__gte=float(min_rating)) | Q(rating=0.0))
                     except ValueError:
                         pass
 
@@ -521,6 +523,65 @@ class TeacherViewSet(viewsets.ModelViewSet):
                 # Fallback to User ID
                 return get_object_or_404(Teacher, user__id=val)
         return get_object_or_404(Teacher, user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get list of active subject categories dynamically from approved teachers"""
+        from collections import Counter
+        from .models.users import Teacher
+
+        # Get all approved teachers
+        teachers = Teacher.objects.filter(status='approved')
+
+        counter = Counter()
+        for teacher in teachers:
+            cats = set()
+            if teacher.categories:
+                cats.update([c.strip() for c in teacher.categories.split(',') if c.strip()])
+            if teacher.subjects:
+                cats.update([s.strip() for s in teacher.subjects.split(',') if s.strip()])
+
+            for cat in cats:
+                cleaned_cat = cat.strip().title()
+                if cleaned_cat == 'Sql':
+                    cleaned_cat = 'SQL'
+                elif cleaned_cat == 'Html':
+                    cleaned_cat = 'HTML'
+                elif cleaned_cat == 'Css':
+                    cleaned_cat = 'CSS'
+                elif cleaned_cat == 'Js':
+                    cleaned_cat = 'JS'
+                counter[cleaned_cat] += 1
+
+        results = []
+        for label, count in counter.most_common():
+            icon = '•'
+            label_lower = label.lower()
+            if 'math' in label_lower:
+                icon = '∑'
+            elif 'program' in label_lower or 'code' in label_lower or 'dev' in label_lower:
+                icon = '</>'
+            elif 'arab' in label_lower:
+                icon = 'ع'
+            elif 'eng' in label_lower:
+                icon = 'Aa'
+            elif 'bus' in label_lower or 'fin' in label_lower or 'econ' in label_lower:
+                icon = '📊'
+            elif 'phys' in label_lower or 'sci' in label_lower:
+                icon = '⚛'
+            elif 'qur' in label_lower or 'islam' in label_lower:
+                icon = '☽'
+            elif 'mus' in label_lower:
+                icon = '♪'
+
+            results.append({
+                'id': label.lower().replace(' ', '_'),
+                'label': label,
+                'icon': icon,
+                'count': count
+            })
+
+        return Response(results)
 
     @action(detail=False, methods=['get', 'patch', 'post'], permission_classes=[IsAuthenticated])
     def me(self, request):

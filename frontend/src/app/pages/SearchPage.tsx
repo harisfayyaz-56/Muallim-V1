@@ -5,7 +5,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { TeacherCard } from '../components/TeacherCard';
 import { CATEGORIES } from '../data/mockData';
-import { getTeachers } from '../../api/profile';
+import { getTeachers, getTeacherCategories, TeacherCategory } from '../../api/profile';
 import { mapProfileToTeacher } from '../utils/mappers';
 
 const SORT_OPTIONS = [
@@ -28,6 +28,7 @@ export function SearchPage() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [categories, setCategories] = useState<TeacherCategory[]>([]);
 
   const totalPages = Math.ceil(totalCount / 12);
 
@@ -38,14 +39,27 @@ export function SearchPage() {
     setCurrentPage(1);
   }, [searchParams]);
 
+  // Fetch dynamic categories on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = localStorage.getItem('muallim_access_token');
+        const cats = await getTeacherCategories(token || undefined);
+        setCategories(cats);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
+    })();
+  }, []);
+
   // Fetch paginated, filtered, and sorted teachers from API
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('muallim_access_token');
-        const cat = CATEGORIES.find(c => c.id === selectedCategory);
-        const subjectParam = cat ? cat.label.split(' ')[0] : undefined;
+        const cat = categories.find(c => c.id === selectedCategory);
+        const subjectParam = cat ? cat.label : undefined;
 
         const res = await getTeachers({
           page: currentPage,
@@ -65,7 +79,7 @@ export function SearchPage() {
         setLoading(false);
       }
     })();
-  }, [currentPage, query, selectedCategory, priceRange, sortBy, minRating]);
+  }, [currentPage, query, selectedCategory, priceRange, sortBy, minRating, categories]);
 
   const changeCategory = (catId: string) => {
     setSelectedCategory(catId);
@@ -140,7 +154,7 @@ export function SearchPage() {
                 >
                   All Subjects
                 </button>
-                {CATEGORIES.map(cat => (
+                {categories.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => changeCategory(cat.id === selectedCategory ? '' : cat.id)}

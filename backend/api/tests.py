@@ -242,6 +242,39 @@ class UserManagementTests(TestCase):
         teacher_ids = [t['id'] for t in results]
         self.assertNotIn(self.teacher.id, teacher_ids)
 
+    def test_teacher_categories_endpoint(self):
+        # We can query categories endpoint even without authentication
+        self.teacher.categories = "Mathematics, Science, Programming"
+        self.teacher.subjects = "Mathematics, Physics"
+        self.teacher.save()
+
+        response = self.client.get('/api/teacher/categories/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify our categories show up in the results
+        labels = [c['label'] for c in response.data]
+        self.assertIn("Mathematics", labels)
+        self.assertIn("Science", labels)
+        self.assertIn("Programming", labels)
+        self.assertIn("Physics", labels)
+
+    def test_rating_filter_with_new_teacher(self):
+        # Authenticate as student
+        self.client.force_authenticate(user=self.student_user)
+        
+        # Ensure our teacher has 0.0 rating
+        self.teacher.rating = 0.0
+        self.teacher.save()
+        
+        # Query teachers with min_rating=4.0
+        response = self.client.get('/api/teacher/?min_rating=4.0')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify our new teacher (0.0 rating) is still in the result list (since they map to 5.0)
+        results = response.data.get('results', response.data)
+        teacher_ids = [t['id'] for t in results]
+        self.assertIn(self.teacher.id, teacher_ids)
+
     def test_teacher_cannot_book_themselves(self):
         # Create availability for teacher
         # 2026-06-20 is a Saturday

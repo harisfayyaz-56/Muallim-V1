@@ -307,6 +307,35 @@ export interface PaginatedTeachersResponse {
   results: TeacherProfile[];
 }
 
+export interface TeacherCategory {
+  id: string;
+  label: string;
+  icon: string;
+  count: number;
+}
+
+/**
+ * Get dynamic list of categories from approved teachers
+ */
+export const getTeacherCategories = async (token?: string): Promise<TeacherCategory[]> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${API_BASE}/teacher/categories/`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch teacher categories');
+  }
+
+  return response.json();
+};
+
 /**
  * Get public list of approved teachers with optional filtering, sorting, and pagination
  */
